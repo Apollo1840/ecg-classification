@@ -5,13 +5,14 @@ from sklearn.feature_selection import SelectKBest
 from sklearn.feature_selection import chi2
 
 import numpy as np
+
+
 # https://machinelearningmastery.com/feature-selection-machine-learning-python/
 
 def run_feature_selection(features, labels, feature_selection, best_features):
-    
     if feature_selection == 'select_K_Best':
         # feature extraction
-        selector = SelectKBest(score_func=f_classif, k=4) # score_func=chi2 : only for non-negative features
+        selector = SelectKBest(score_func=f_classif, k=4)  # score_func=chi2 : only for non-negative features
         selector.fit(features, labels)
         # summarize scores
         scores = selector.scores_
@@ -19,7 +20,7 @@ def run_feature_selection(features, labels, feature_selection, best_features):
         features_selected = features[:, features_index_sorted[0:best_features]]
 
     # SelectFromModel and LassoCV
-    
+
     # We use the base estimator LassoCV since the L1 norm promotes sparsity of features.
     if feature_selection == 'LassoCV':
         clf = LassoCV()
