@@ -512,6 +512,7 @@ def load_signal(DS, winL, winR, do_preprocess):
     :param do_preprocess: Bool, indicates if preprocesing of remove baseline on signal is performed
     :return: mitdb object.
     """
+    size_RR_max = 20
 
     Original_R_poses = [np.array([]) for _ in range(len(DS))]
     R_poses = [np.array([]) for _ in range(len(DS))]
@@ -521,8 +522,6 @@ def load_signal(DS, winL, winR, do_preprocess):
 
     beat = [[] for _ in range(len(DS))]  # dim: record, beat, lead
     class_ID = [[] for _ in range(len(DS))]
-
-    size_RR_max = 20
 
     DB_name = 'mitdb'
     fs = 360
