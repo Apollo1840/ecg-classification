@@ -9,3 +9,5 @@ python/results*
 
 python/mit_db/*
 
+*/.ipynb_checkpoints/*
+.idea/*
