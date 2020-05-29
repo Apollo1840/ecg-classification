@@ -41,42 +41,31 @@ Performed using Matlab 2016b 64 bits
 
 ## Steps (How to run)
  
-1. Download the dataset:
-    - a) Download via Kaggle:
+### 1. Download the dataset:
+- a) Download via Kaggle:
 
-        The raw signals files (.csv) and annotations files can be downloaded from [kaggle.com/mondejar/mitbih-database](https://www.kaggle.com/mondejar/mitbih-database)
+    The raw signals files (.csv) and annotations files can be downloaded from [kaggle.com/mondejar/mitbih-database](https://www.kaggle.com/mondejar/mitbih-database)
 
-    - b) Download via WFDB:
+- b) Download via WFDB:
+    
+    1) run:
 
-        https://www.physionet.org/faq.shtml#downloading-databases
+            rsync -Cavz physionet.org::mitdb /home/congyu/dataset/ECG/mitbih
+            
+            # or
+            rsync -Cavz physionet.org::incartdb /home/mondejar/dataset/ECG/incart
+            
+    2) follow the steps to install wfdb on your PC:
+        https://archive.physionet.org/physiotools/wfdb-linux-quick-start.shtml
+     
+    3) run:
+        
+            python convert_wfdb2csv.py --datadir=/home/congyu/dataset/ECG/mitdb
+    
+    ---
+    
+    https://www.physionet.org/faq.shtml#downloading-databases
 
-        Using the comand **rsync** you can check the datasets availability:
-
-        ```
-        rsync physionet.org::
-        ```
-        The terminal will show all the available datasets:
-        ```
-        physionet      	PhysioNet web site, volume 1 (about 23 GB)
-        physionet-small	PhysioNet web site, excluding databases (about 5 GB)
-        ...
-        ...
-        umwdb          	Unconstrained and Metronomic Walking Database (1 MB)
-        vfdb           	MIT-BIH Malignant Ventricular Ectopy Database (33 MB)
-        ```
-
-        Then select the desired dataset as:
-        ```
-        rsync -Cavz physionet.org::mitdb /home/mondejar/dataset/ECG/mitdb
-        ```
-
-        ```
-        rsync -Cavz physionet.org::incartdb /home/mondejar/dataset/ECG/incartdb
-        ```
-
-        Finally to convert the data as plain text files use [convert_wfdb_data_2_csv.py](https://github.com/mondejar/WFDB_utils_and_others/blob/master/convert_wfdb_data_2_csv.py). One file with the raw data and one file for annotations ground truth. 
-
-        Also check the repo [WFDB_utils_and_others](https://github.com/mondejar/WFDB_utils_and_others) for more info about WFDB database conversion and the original site from [Physionet_tools](https://www.physionet.org/physiotools/wag/wag.htm).
 
 2. Run:
 
@@ -423,3 +412,30 @@ NOTE:*The beats whose Q and S points were not detected are considered as outlier
 
 # License
 The code of this repository is available under [GNU GPLv3 license](https://www.gnu.org/licenses/gpl-3.0.html).
+
+
+# Notes
+
+Using the comand **rsync** you can check the datasets availability:
+    
+```
+rsync physionet.org::
+```
+The terminal will show all the available datasets:
+```
+physionet      	PhysioNet web site, volume 1 (about 23 GB)
+physionet-small	PhysioNet web site, excluding databases (about 5 GB)
+...
+...
+umwdb          	Unconstrained and Metronomic Walking Database (1 MB)
+vfdb           	MIT-BIH Malignant Ventricular Ectopy Database (33 MB)
+```
+
+Then select the desired dataset as:
+```
+rsync -Cavz physionet.org::mitdb /home/mondejar/dataset/ECG/mitdb
+```
+
+```
+rsync -Cavz physionet.org::incartdb /home/mondejar/dataset/ECG/incartdb
+```
