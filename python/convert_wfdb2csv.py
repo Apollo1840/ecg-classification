@@ -28,7 +28,7 @@ def convert(datadir):
 		command = 'rdsamp -r {ptid} -c -H -f 0 -v > {datadir_out}{ptid}.csv'.format(ptid=ptid, datadir_out=datadir_out)
 		os.system(command)
 
-		command = 'rdann -r {ptid} -f 0 -a atr -v  > {datadir_out}{ptid}.ann'.format(ptid=ptid, datadir_out=datadir_out)
+		command = 'rdann -r {ptid} -f 0 -a atr -v  > {datadir_out}{ptid}.txt'.format(ptid=ptid, datadir_out=datadir_out)
 		os.system(command)
 
 	os.chdir(current_dir)

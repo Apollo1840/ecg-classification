@@ -22,41 +22,297 @@ from scipy.signal import medfilt
 import scipy.stats
 import pywt
 import time
-import sklearn
-from sklearn import decomposition
-from sklearn.decomposition import PCA, IncrementalPCA
+import operator
+from tqdm import tqdm
 
-from .mit_db import mit_db
-from .features_ECG import *
+from mit_db import mit_db, RR_intervals
+from features_ECG import *
 
 from numpy.polynomial.hermite import hermfit, hermval
 
-DATA_DIR = '/home/mondejar/dataset/ECG/'
+DATA_DIR = '/home/congyu/dataset/ECG/mitbihcsv/'
 MITBIH_CLASSES = ['N', 'L', 'R', 'e', 'j', 'A', 'a', 'J', 'S', 'V', 'E', 'F']  # , 'P', '/', 'f', 'u']
+AAMI = {
+    "N": ['N', 'L', 'R'],
+    "SVEB": ['A', 'a', 'J', 'S', 'e', 'j'],
+    "VEB": ['V', 'E'],
+    "F": ['F'],
+    # "Q": ['P', '/', 'f', 'u'],
+}
+
+DS_bank = {
+    "normal": {
+        "DS1": [101, 106, 108, 109, 112, 114, 115, 116, 118, 119,
+                122, 124, 201, 203, 205, 207, 208, 209, 215, 220,
+                223, 230],
+        "DS2": [100, 103, 105, 111, 113, 117, 121, 123, 200, 202,
+                210, 212, 213, 214, 219, 221, 222, 228, 231, 232,
+                233, 234]
+    },
+    "reduced": {
+        "DS1": [101, 106, 108, 109, 112, 115, 118, 119, 201, 203,
+                205, 207, 208, 209, 215, 220, 223, 230],
+        "DS2": [105, 111, 113, 121, 200, 202, 210, 212, 213, 214,
+                219, 221, 222, 228, 231, 232, 233, 234]
+    }
+}
+
+AAMI_CLASSES = sorted(AAMI.keys())
 
 
-def AAMI():
+def load_mit_db(
+        DS,
+        winL,
+        winR,
+        do_preprocess,
+        maxRR,
+        use_RR,
+        norm_RR,
+        compute_morph,
+        db_path,
+        reduced_DS,
+        leads_flag,
+        is_save=True,
+):
     """
-    TODO: change this to constant
-    
-    :return: 
+    Load the data with the configuration and features selected
+
+    :param DS: Str, "DS1" or "DS2"
+    :param winL: int
+    :param winR: int
+    :param do_preprocess: Bool
+    :param maxRR: Bool
+    :param use_RR: Bool
+    :param norm_RR: Bool
+    :param compute_morph: List[str] or Set[str],
+        can be ['resample_10', 'raw', 'u-lbp', 'lbp', 'hbf5', 'wvlt', 'wvlt+pca', 'HOS', 'myMorph']
+    :param db_path: str
+    :param reduced_DS: Bool,
+            load DS1, DS2 patients division (Chazal) or reduced version,
+            i.e., only patients in common that contains both MLII and V1
+    :param leads_flag: [MLII, V1] set the value to 0 or 1 to reference if that lead is used
+    :param is_save: save loaded as pickle or not
+    :return: features, labels, patient_num_beats
     """
-    
-    AAMI_classes = []
-    AAMI_classes.append(['N', 'L', 'R'])  # N
-    AAMI_classes.append(['A', 'a', 'J', 'S', 'e', 'j'])  # SVEB
-    AAMI_classes.append(['V', 'E'])  # VEB
-    AAMI_classes.append(['F'])  # F
-    # AAMI_classes.append(['P', '/', 'f', 'u'])              # Q
 
-    return AAMI_classes
+    features_labels_name = name_ml_data(DS,
+                                        winL,
+                                        winR,
+                                        do_preprocess,
+                                        maxRR,
+                                        use_RR, norm_RR,
+                                        compute_morph,
+                                        db_path,
+                                        reduced_DS,
+                                        leads_flag)
+
+    if os.path.isfile(features_labels_name):
+        print("Loading pickle: " + features_labels_name + "...")
+        f = open(features_labels_name, 'rb')
+        # disable garbage collector
+        gc.disable()  # this improve the required loading time!
+        features, labels, patient_num_beats = pickle.load(f)
+        gc.enable()
+        f.close()
+
+    else:
+        my_db = load_mitbih_db(DS, db_path, (winL, winR), reduced_DS, do_preprocess, False)
+
+        # first labels
+        labels = np.array(sum(my_db.class_ID, [])).flatten()
+
+        # then features
+        features = np.array([], dtype=float)
+
+        # before actual get the features, there are something to prepare:
+        # prepare for use_RR and norm_RR, if it is needed
+        RR = []
+        if use_RR or norm_RR:
+            if maxRR:
+                r_poses = my_db.R_pos
+            else:
+                r_poses = my_db.orig_R_pos
+            RR = calc_RR_intervals(r_poses, my_db.valid_R)
+
+        #########################################################################
+        # Compute RR intervals features
+
+        if use_RR:
+            features_rr = get_features_rr(RR)
+            features = np.column_stack((features, features_rr)) if features.size else features_rr
+
+        if norm_RR:
+            features_rr_norm = get_features_rr_norm(RR)
+            features = np.column_stack((features, features_rr_norm)) if features.size else features_rr_norm
+
+        ##########################################################################
+        # Compute morphological features
+
+        if 'raw' in compute_morph:
+            print("Raw ...")
+            start = time.time()
+
+            features_raw = get_features_raw(my_db.beat, leads_flag)
+            features = np.column_stack((features, features_raw)) if features.size else features_raw
+
+            end = time.time()
+            print("Time raw: " + str(format(end - start, '.2f')) + " sec")
+
+        if 'resample_10' in compute_morph:
+            print("Resample_10 ...")
+            start = time.time()
+
+            features_raw = get_features_resample_10(my_db.beat, leads_flag)
+            features = np.column_stack((features, features_raw)) if features.size else features_raw
+
+            end = time.time()
+            print("Time resample: " + str(format(end - start, '.2f')) + " sec")
+
+        if 'u-lbp' in compute_morph:
+            print("u-lbp ...")
+
+            features_u_lbp = get_features_u_lbp(my_db.beat, leads_flag)
+            features = np.column_stack((features, features_u_lbp)) if features.size else features_u_lbp
+
+            print(features.shape)
+
+        if 'lbp' in compute_morph:
+            print("lbp ...")
+
+            features_lbp = get_features_lbp(my_db.beat, leads_flag)
+            features = np.column_stack((features, features_lbp)) if features.size else features_lbp
+
+            print(features.shape)
+
+        if 'hbf5' in compute_morph:
+            print("hbf ...")
+
+            features_temp = get_features_hbf5(my_db.beat, leads_flag)
+            features = np.column_stack((features, features_temp)) if features.size else features_temp
+
+            print(features.shape)
+
+        # Wavelets
+        if 'wvlt' in compute_morph:
+            print("Wavelets ...")
+
+            features_temp = get_features_wvlt(my_db.beat, leads_flag)
+            features = np.column_stack((features, features_temp)) if features.size else features_temp
+
+        # Wavelets
+        if 'wvlt+pca' in compute_morph:
+            features_temp = get_features_wvlt_pca(my_db.beat, leads_flag, DS, family="db1", level=3, pca_k=7)
+            features = np.column_stack((features, features_temp)) if features.size else features_temp
+
+        # HOS
+        if 'HOS' in compute_morph:
+            print("HOS ...")
+            features_temp = get_featurs_hos(my_db.beat, leads_flag)
+            features = np.column_stack((features, features_temp)) if features.size else features_temp
+            print(features.shape)
+
+        # My morphological descriptor
+        if 'myMorph' in compute_morph:
+            print("My Descriptor ...")
+            features_temp = get_features_mymorph(my_db.beat, leads_flag, winL, winR)
+            features = np.column_stack((features, features_temp)) if features.size else features_temp
+
+        # This array contains the number of beats for each patient (for cross_val)
+        patient_num_beats = np.array([], dtype=np.int32)
+        for p in range(len(my_db.beat)):
+            patient_num_beats = np.append(patient_num_beats, len(my_db.beat[p]))
+
+        # Set labels array!
+        print('writing pickle: ' + features_labels_name + '...')
+        if not os.path.exists(os.path.dirname(features_labels_name)):
+            os.makedirs(os.path.dirname(features_labels_name))
+
+        with open(features_labels_name, 'wb') as f:
+            pickle.dump([features, labels, patient_num_beats], f, 2)
+
+    return features, labels, patient_num_beats
 
 
-AAMI_CLASSES = AAMI()
+def load_mitbih_db(DS, db_path, ws, is_reduce, do_preprocess=False, is_save=True):
+    """
+
+    load mitbih db as my_db
+
+    :param DS: Str, "DS1" or "DS2"
+    :param db_path: str
+    :param ws: Tuple[int], (winL, winR), window size
+    :param do_preprocess: Bool
+    :param is_reduce: Bool
+    :param is_save: Bool
+    :return: my_db object
+    """
+
+    print("Loading MIT BIH arr (" + DS + ") ...")
+
+    # ML-II + V1
+    if is_reduce:
+        DS1 = DS_bank["reduced"]["DS1"]
+        DS2 = DS_bank["reduced"]["DS2"]
+    # ML-II
+    else:
+        DS1 = DS_bank["normal"]["DS1"]
+        DS2 = DS_bank["normal"]["DS2"]
+
+    winL, winR = ws
+    mit_pickle_name = name_my_db(db_path, is_reduce, do_preprocess, winL, winR, DS)
+
+    # If the data with that configuration has been already computed Load pickle
+    if os.path.isfile(mit_pickle_name):
+        with open(mit_pickle_name, 'rb') as f:
+            # disable garbage collector
+            gc.disable()  # this improve the required loading time!
+            my_db = pickle.load(f)
+            gc.enable()
+
+    else:  # Load data and compute de RR features
+        if DS == 'DS1':
+            my_db = load_signal(DS1, ws, do_preprocess)
+        else:
+            my_db = load_signal(DS2, ws, do_preprocess)
+
+        if is_save:
+            print("Saving signal processed data ...")
+            with open(mit_pickle_name, 'wb') as f:
+                pickle.dump(my_db, f, 2)
+                # Protocol version 0 itr_features_balanceds the original ASCII protocol and is backwards compatible with earlier versions of Python.
+                # Protocol version 1 is the old binary format which is also compatible with earlier versions of Python.
+                # Protocol version 2 was introduced in Python 2.3. It provides much more efficient pickling of new-style classes.
+
+    return my_db
 
 
-def create_features_labels_name(DS, winL, winR, do_preprocess, maxRR, use_RR, norm_RR,
-                                compute_morph, db_path, reduced_DS, leads_flag):
+def name_my_db(db_path, reduced_DS, do_preprocess, winL, winR, DS):
+    """
+
+    :param db_path:
+    :param reduced_DS:
+    :param do_preprocess:
+    :param winL:
+    :param winR:
+    :param DS:
+    :return: str
+    """
+
+    mit_pickle_name = db_path + 'python_mit'
+    if reduced_DS:
+        mit_pickle_name = mit_pickle_name + '_reduced_'
+
+    if do_preprocess:
+        mit_pickle_name = mit_pickle_name + '_rm_bsline'
+
+    mit_pickle_name = mit_pickle_name + '_wL_' + str(winL) + '_wR_' + str(winR)
+    mit_pickle_name = mit_pickle_name + '_' + DS + '.pkl'
+
+    return mit_pickle_name
+
+
+def name_ml_data(DS, winL, winR, do_preprocess, maxRR, use_RR, norm_RR,
+                 compute_morph, db_path, reduced_DS, leads_flag):
     """
 
 
@@ -100,415 +356,16 @@ def create_features_labels_name(DS, winL, winR, do_preprocess, maxRR, use_RR, no
     if leads_flag[1] == 1:
         features_labels_name += '_V1'
 
-    features_labels_name += '.p'
+    features_labels_name += '.pkl'
 
     return features_labels_name
 
 
-def save_wvlt_PCA(PCA, pca_k, family, level):
-    f = open('Wvlt_' + family + '_' + str(level) + '_PCA_' + str(pca_k) + '.p', 'wb')
-    pickle.dump(PCA, f, 2)
-    f.close
-
-
-def load_wvlt_PCA(pca_k, family, level):
-    f = open('Wvlt_' + family + '_' + str(level) + '_PCA_' + str(pca_k) + '.p', 'rb')
-    # disable garbage collector       
-    gc.disable()  # this improve the required loading time!
-    PCA = pickle.load(f)
-    gc.enable()
-    f.close()
-
-    return PCA
-
-
-def load_mit_db(DS, winL, winR, do_preprocess, maxRR, use_RR, norm_RR, compute_morph, db_path, reduced_DS, leads_flag):
-    """
-    Load the data with the configuration and features selected
-
-    :param DS: Str, "DS1" or "DS2"
-    :param winL:
-    :param winR:
-    :param do_preprocess:
-    :param maxRR:
-    :param use_RR:
-    :param norm_RR:
-    :param compute_morph: List[str] or Set[str],
-        can be ['resample_10', 'raw', 'u-lbp', 'lbp', 'hbf5', 'wvlt', 'wvlt+pca', 'HOS', 'myMorph']
-    :param db_path: str
-    :param reduced_DS: Bool
-            load DS1, DS2 patients division (Chazal) or reduced version,
-            i.e., only patients in common that contains both MLII and V1
-    :param leads_flag: [MLII, V1] set the value to 0 or 1 to reference if that lead is used
-    :return:
+def load_signal(DS, ws, do_preprocess=True):
     """
 
-    features_labels_name = create_features_labels_name(DS,
-                                                       winL,
-                                                       winR,
-                                                       do_preprocess,
-                                                       maxRR, use_RR, norm_RR,
-                                                       compute_morph,
-                                                       db_path,
-                                                       reduced_DS,
-                                                       leads_flag)
-
-    if os.path.isfile(features_labels_name):
-        print("Loading pickle: " + features_labels_name + "...")
-        f = open(features_labels_name, 'rb')
-        # disable garbage collector       
-        gc.disable()  # this improve the required loading time!
-        features, labels, patient_num_beats = pickle.load(f)
-        gc.enable()
-        f.close()
-
-    else:
-        print("Loading MIT BIH arr (" + DS + ") ...")
-
-        # ML-II + V1
-        if reduced_DS:
-            DS1 = [101, 106, 108, 109, 112, 115, 118, 119, 201, 203, 205, 207, 208, 209, 215, 220, 223, 230]
-            DS2 = [105, 111, 113, 121, 200, 202, 210, 212, 213, 214, 219, 221, 222, 228, 231, 232, 233, 234]
-
-        # ML-II
-        else:
-            DS1 = [101, 106, 108, 109, 112, 114, 115, 116, 118, 119, 122, 124, 201, 203, 205, 207, 208, 209, 215, 220,
-                   223, 230]
-            DS2 = [100, 103, 105, 111, 113, 117, 121, 123, 200, 202, 210, 212, 213, 214, 219, 221, 222, 228, 231, 232,
-                   233, 234]
-
-        mit_pickle_name = db_path + 'python_mit'
-        if reduced_DS:
-            mit_pickle_name = mit_pickle_name + '_reduced_'
-
-        if do_preprocess:
-            mit_pickle_name = mit_pickle_name + '_rm_bsline'
-
-        mit_pickle_name = mit_pickle_name + '_wL_' + str(winL) + '_wR_' + str(winR)
-        mit_pickle_name = mit_pickle_name + '_' + DS + '.p'
-
-        # If the data with that configuration has been already computed Load pickle
-        if os.path.isfile(mit_pickle_name):
-            f = open(mit_pickle_name, 'rb')
-            # disable garbage collector       
-            gc.disable()  # this improve the required loading time!
-            my_db = pickle.load(f)
-            gc.enable()
-            f.close()
-
-        else:  # Load data and compute de RR features
-            if DS == 'DS1':
-                my_db = load_signal(DS1, winL, winR, do_preprocess)
-            else:
-                my_db = load_signal(DS2, winL, winR, do_preprocess)
-
-            print("Saving signal processed data ...")
-
-            # Save data
-            # Protocol version 0 itr_features_balanceds the original ASCII protocol and is backwards compatible with earlier versions of Python.
-            # Protocol version 1 is the old binary format which is also compatible with earlier versions of Python.
-            # Protocol version 2 was introduced in Python 2.3. It provides much more efficient pickling of new-style classes.
-            f = open(mit_pickle_name, 'wb')
-            pickle.dump(my_db, f, 2)
-            f.close()
-
-        features = np.array([], dtype=float)
-        labels = np.array([], dtype=np.int32)
-
-        # This array contains the number of beats for each patient (for cross_val)
-        patient_num_beats = np.array([], dtype=np.int32)
-        for p in range(len(my_db.beat)):
-            patient_num_beats = np.append(patient_num_beats, len(my_db.beat[p]))
-
-        # Compute RR features
-        if use_RR or norm_RR:
-            if DS == 'DS1':
-                RR = [RR_intervals() for i in range(len(DS1))]
-            else:
-                RR = [RR_intervals() for i in range(len(DS2))]
-
-            print("Computing RR intervals ...")
-
-            for p in range(len(my_db.beat)):
-                if maxRR:
-                    RR[p] = compute_RR_intervals(my_db.R_pos[p])
-                else:
-                    RR[p] = compute_RR_intervals(my_db.orig_R_pos[p])
-
-                RR[p].pre_R = RR[p].pre_R[(my_db.valid_R[p] == 1)]
-                RR[p].post_R = RR[p].post_R[(my_db.valid_R[p] == 1)]
-                RR[p].local_R = RR[p].local_R[(my_db.valid_R[p] == 1)]
-                RR[p].global_R = RR[p].global_R[(my_db.valid_R[p] == 1)]
-
-        if use_RR:
-            f_RR = np.empty((0, 4))
-            for p in range(len(RR)):
-                row = np.column_stack((RR[p].pre_R, RR[p].post_R, RR[p].local_R, RR[p].global_R))
-                f_RR = np.vstack((f_RR, row))
-
-            features = np.column_stack((features, f_RR)) if features.size else f_RR
-
-        if norm_RR:
-            f_RR_norm = np.empty((0, 4))
-            for p in range(len(RR)):
-                # Compute avg values!
-                avg_pre_R = np.average(RR[p].pre_R)
-                avg_post_R = np.average(RR[p].post_R)
-                avg_local_R = np.average(RR[p].local_R)
-                avg_global_R = np.average(RR[p].global_R)
-
-                row = np.column_stack((RR[p].pre_R / avg_pre_R, RR[p].post_R / avg_post_R, RR[p].local_R / avg_local_R,
-                                       RR[p].global_R / avg_global_R))
-                f_RR_norm = np.vstack((f_RR_norm, row))
-
-            features = np.column_stack((features, f_RR_norm)) if features.size else f_RR_norm
-
-        #########################################################################################
-        # Compute morphological features
-        print("Computing morphological features (" + DS + ") ...")
-
-        num_leads = np.sum(leads_flag)
-
-        # Raw
-        if 'resample_10' in compute_morph:
-            print("Resample_10 ...")
-            start = time.time()
-
-            f_raw = np.empty((0, 10 * num_leads))
-
-            for p in range(len(my_db.beat)):
-                for beat in my_db.beat[p]:
-                    f_raw_lead = np.empty([])
-                    for s in range(2):
-                        if leads_flag[s] == 1:
-                            resamp_beat = scipy.signal.resample(beat[s], 10)
-                            if f_raw_lead.size == 1:
-                                f_raw_lead = resamp_beat
-                            else:
-                                f_raw_lead = np.hstack((f_raw_lead, resamp_beat))
-                    f_raw = np.vstack((f_raw, f_raw_lead))
-
-            features = np.column_stack((features, f_raw)) if features.size else f_raw
-
-            end = time.time()
-            print("Time resample: " + str(format(end - start, '.2f')) + " sec")
-
-        if 'raw' in compute_morph:
-            print("Raw ...")
-            start = time.time()
-
-            f_raw = np.empty((0, (winL + winR) * num_leads))
-
-            for p in range(len(my_db.beat)):
-                for beat in my_db.beat[p]:
-                    f_raw_lead = np.empty([])
-                    for s in range(2):
-                        if leads_flag[s] == 1:
-                            if f_raw_lead.size == 1:
-                                f_raw_lead = beat[s]
-                            else:
-                                f_raw_lead = np.hstack((f_raw_lead, beat[s]))
-                    f_raw = np.vstack((f_raw, f_raw_lead))
-
-            features = np.column_stack((features, f_raw)) if features.size else f_raw
-
-            end = time.time()
-            print("Time raw: " + str(format(end - start, '.2f')) + " sec")
-
-        # LBP 1D
-        # 1D-local binary pattern based feature extraction for classification of epileptic EEG signals: 2014, unas 55 citas, Q2-Q1 Matematicas
-        # https://ac.els-cdn.com/S0096300314008285/1-s2.0-S0096300314008285-main.pdf?_tid=8a8433a6-e57f-11e7-98ec-00000aab0f6c&acdnat=1513772341_eb5d4d26addb6c0b71ded4fd6cc23ed5
-
-        # 1D-LBP method, which derived from implementation steps of 2D-LBP, was firstly proposed by Chatlani et al. for detection of speech signals that is non-stationary in nature [23]
-
-        # From Raw signal
-
-        # TODO: Some kind of preprocesing or clean high frequency noise?
-
-        # Compute 2 Histograms: LBP or Uniform LBP
-        # LBP 8 = 0-255
-        # U-LBP 8 = 0-58
-        # Uniform LBP are only those pattern wich only presents 2 (or less) transitions from 0-1 or 1-0
-        # All the non-uniform patterns are asigned to the same value in the histogram
-
-        if 'u-lbp' in compute_morph:
-            print("u-lbp ...")
-
-            f_lbp = np.empty((0, 59 * num_leads))
-
-            for p in range(len(my_db.beat)):
-                for beat in my_db.beat[p]:
-                    f_lbp_lead = np.empty([])
-                    for s in range(2):
-                        if leads_flag[s] == 1:
-                            if f_lbp_lead.size == 1:
-
-                                f_lbp_lead = compute_Uniform_LBP(beat[s], 8)
-                            else:
-                                f_lbp_lead = np.hstack((f_lbp_lead, compute_Uniform_LBP(beat[s], 8)))
-                    f_lbp = np.vstack((f_lbp, f_lbp_lead))
-
-            features = np.column_stack((features, f_lbp)) if features.size else f_lbp
-            print(features.shape)
-
-        if 'lbp' in compute_morph:
-            print("lbp ...")
-
-            f_lbp = np.empty((0, 16 * num_leads))
-
-            for p in range(len(my_db.beat)):
-                for beat in my_db.beat[p]:
-                    f_lbp_lead = np.empty([])
-                    for s in range(2):
-                        if leads_flag[s] == 1:
-                            if f_lbp_lead.size == 1:
-
-                                f_lbp_lead = compute_LBP(beat[s], 4)
-                            else:
-                                f_lbp_lead = np.hstack((f_lbp_lead, compute_LBP(beat[s], 4)))
-                    f_lbp = np.vstack((f_lbp, f_lbp_lead))
-
-            features = np.column_stack((features, f_lbp)) if features.size else f_lbp
-            print(features.shape)
-
-        if 'hbf5' in compute_morph:
-            print("hbf ...")
-
-            f_hbf = np.empty((0, 15 * num_leads))
-
-            for p in range(len(my_db.beat)):
-                for beat in my_db.beat[p]:
-                    f_hbf_lead = np.empty([])
-                    for s in range(2):
-                        if leads_flag[s] == 1:
-                            if f_hbf_lead.size == 1:
-
-                                f_hbf_lead = compute_HBF(beat[s])
-                            else:
-                                f_hbf_lead = np.hstack((f_hbf_lead, compute_HBF(beat[s])))
-                    f_hbf = np.vstack((f_hbf, f_hbf_lead))
-
-            features = np.column_stack((features, f_hbf)) if features.size else f_hbf
-            print(features.shape)
-
-        # Wavelets
-        if 'wvlt' in compute_morph:
-            print("Wavelets ...")
-
-            f_wav = np.empty((0, 23 * num_leads))
-
-            for p in range(len(my_db.beat)):
-                for b in my_db.beat[p]:
-                    f_wav_lead = np.empty([])
-                    for s in range(2):
-                        if leads_flag[s] == 1:
-                            if f_wav_lead.size == 1:
-                                f_wav_lead = compute_wavelet_descriptor(b[s], 'db1', 3)
-                            else:
-                                f_wav_lead = np.hstack((f_wav_lead, compute_wavelet_descriptor(b[s], 'db1', 3)))
-                    f_wav = np.vstack((f_wav, f_wav_lead))
-                    # f_wav = np.vstack((f_wav, compute_wavelet_descriptor(b,  'db1', 3)))
-
-            features = np.column_stack((features, f_wav)) if features.size else f_wav
-
-        # Wavelets
-        if 'wvlt+pca' in compute_morph:
-            pca_k = 7
-            print("Wavelets + PCA (" + str(pca_k) + "...")
-
-            family = 'db1'
-            level = 3
-
-            f_wav = np.empty((0, 23 * num_leads))
-
-            for p in range(len(my_db.beat)):
-                for b in my_db.beat[p]:
-                    f_wav_lead = np.empty([])
-                    for s in range(2):
-                        if leads_flag[s] == 1:
-                            if f_wav_lead.size == 1:
-                                f_wav_lead = compute_wavelet_descriptor(b[s], family, level)
-                            else:
-                                f_wav_lead = np.hstack((f_wav_lead, compute_wavelet_descriptor(b[s], family, level)))
-                    f_wav = np.vstack((f_wav, f_wav_lead))
-                    # f_wav = np.vstack((f_wav, compute_wavelet_descriptor(b,  'db1', 3)))
-
-            if DS == 'DS1':
-                # Compute PCA
-                # PCA = sklearn.decomposition.KernelPCA(pca_k) # gamma_pca
-                IPCA = IncrementalPCA(n_components=pca_k,
-                                      batch_size=10)  # NOTE: due to memory errors, we employ IncrementalPCA
-                IPCA.fit(f_wav)
-
-                # Save PCA
-                save_wvlt_PCA(IPCA, pca_k, family, level)
-            else:
-                # Load PCAfrom sklearn.decomposition import PCA, IncrementalPCA
-                IPCA = load_wvlt_PCA(pca_k, family, level)
-            # Extract the PCA
-            # f_wav_PCA = np.empty((0, pca_k * num_leads))
-            f_wav_PCA = IPCA.transform(f_wav)
-            features = np.column_stack((features, f_wav_PCA)) if features.size else f_wav_PCA
-
-        # HOS
-        if 'HOS' in compute_morph:
-            print("HOS ...")
-            n_intervals = 6
-            lag = int(round((winL + winR) / n_intervals))
-
-            f_HOS = np.empty((0, (n_intervals - 1) * 2 * num_leads))
-            for p in range(len(my_db.beat)):
-                for b in my_db.beat[p]:
-                    f_HOS_lead = np.empty([])
-                    for s in range(2):
-                        if leads_flag[s] == 1:
-                            if f_HOS_lead.size == 1:
-                                f_HOS_lead = compute_hos_descriptor(b[s], n_intervals, lag)
-                            else:
-                                f_HOS_lead = np.hstack((f_HOS_lead, compute_hos_descriptor(b[s], n_intervals, lag)))
-                    f_HOS = np.vstack((f_HOS, f_HOS_lead))
-                    # f_HOS = np.vstack((f_HOS, compute_hos_descriptor(b, n_intervals, lag)))
-
-            features = np.column_stack((features, f_HOS)) if features.size else f_HOS
-            print(features.shape)
-
-        # My morphological descriptor
-        if 'myMorph' in compute_morph:
-            print("My Descriptor ...")
-            f_myMorhp = np.empty((0, 4 * num_leads))
-            for p in range(len(my_db.beat)):
-                for b in my_db.beat[p]:
-                    f_myMorhp_lead = np.empty([])
-                    for s in range(2):
-                        if leads_flag[s] == 1:
-                            if f_myMorhp_lead.size == 1:
-                                f_myMorhp_lead = compute_my_own_descriptor(b[s], winL, winR)
-                            else:
-                                f_myMorhp_lead = np.hstack(
-                                    (f_myMorhp_lead, compute_my_own_descriptor(b[s], winL, winR)))
-                    f_myMorhp = np.vstack((f_myMorhp, f_myMorhp_lead))
-                    # f_myMorhp = np.vstack((f_myMorhp, compute_my_own_descriptor(b, winL, winR)))
-
-            features = np.column_stack((features, f_myMorhp)) if features.size else f_myMorhp
-
-        labels = np.array(sum(my_db.class_ID, [])).flatten()
-        print("labels")
-
-        # Set labels array!
-        print('writing pickle: ' + features_labels_name + '...')
-        f = open(features_labels_name, 'wb')
-        pickle.dump([features, labels, patient_num_beats], f, 2)
-        f.close()
-
-    return features, labels, patient_num_beats
-
-
-def load_signal(DS, winL, winR, do_preprocess):
-    """
-    
     :param DS: List[int], record_ids
-    :param winL: int
-    :param winR: int, together with winR, indicates the size of the window centred at R-peak at left and right side
+    :param ws: Tuple[int], (winL, winR), indicates the size of the window centred at R-peak at left and right side
     :param do_preprocess: Bool, indicates if preprocesing of remove baseline on signal is performed
     :return: mitdb object.
     """
@@ -516,96 +373,50 @@ def load_signal(DS, winL, winR, do_preprocess):
 
     Original_R_poses = [np.array([]) for _ in range(len(DS))]
     R_poses = [np.array([]) for _ in range(len(DS))]
-    valid_R = [np.array([]) for _ in range(len(DS))]  
+    valid_R = [np.array([]) for _ in range(len(DS))]
     # List[int], 1 stands for valid, 0 stands for not valid. valid R will goes into beat and has class_ID
     # a R peak is not valid when its window out of the boundary or the class not belongs to MITBIH
 
     beat = [[] for _ in range(len(DS))]  # dim: record, beat, lead
     class_ID = [[] for _ in range(len(DS))]
 
-    DB_name = 'mitdb'
-    fs = 360
-    jump_lines = 1
-
-    # Read files: signal (.csv )  annotations (.txt)    
-    fRecords = list()
-    fAnnotations = list()
-
-    lst = os.listdir(DATA_DIR + DB_name + "/csv")
-    lst.sort()
-    for filename in lst:
-        if filename.endswith(".csv"):
-            if int(filename[0:3]) in DS:
-                fRecords.append(filename)
-        elif filename.endswith(".txt"):
-            if int(filename[0:3]) in DS:
-                fAnnotations.append(filename)
+    fRecords, fAnnotations = parse_data_dir(DATA_DIR, DS)
 
     RAW_signals = []
 
     # for r, a in zip(fRecords, fAnnotations):
-    for r in range(0, len(fRecords)):
+    for r in tqdm(range(0, len(fRecords))):
 
-        print("Processing signal " + str(r) + " / " + str(len(fRecords)) + "...")
+        # print("Processing signal " + str(r) + " / " + str(len(fRecords)) + "...")
 
         # 1. Read signalR_poses
-        filename = DATA_DIR + DB_name + "/csv/" + fRecords[r]
-        print(filename)
-        
-        with open(filename, 'rb') as f:
-            reader = csv.reader(f, delimiter=',')
-            
-            next(reader)  # skip first line!
-            MLII_index = 1
-            V1_index = 2
-            if int(fRecords[r][0:3]) == 114:
-                MLII_index = 2
-                V1_index = 1
-    
-            MLII = []
-            V1 = []
-            for row in reader:
-                MLII.append((int(row[MLII_index])))
-                V1.append((int(row[V1_index])))
+        filename = os.path.join(DATA_DIR, fRecords[r])
+        MLII, V1 = load_ecg_from_csv(filename)
 
         RAW_signals.append((MLII, V1))  # NOTE a copy must be created in order to preserve the original signal
         # display_signal(MLII)
 
-        # 2. Read annotations
-        filename = DATA_DIR + DB_name + "/csv/" + fAnnotations[r]
-        print(filename)
-        
-        with open(filename, "rb") as f:
-            next(f)  # skip first line!
-            annotations = []
-            for line in f:
-                annotations.append(line)
-                
-        # 3. Preprocessing signal!
+        # 2. Preprocessing signal! (very time consuming)
         if do_preprocess:
             MLII = preprocess_sig(MLII)
             V1 = preprocess_sig(V1)
 
+        # 3. Read annotations
+        filename = os.path.join(DATA_DIR, fAnnotations[r])
+        annotations = load_ann_from_txt(filename)
+
         # Extract the R-peaks from annotations
-        for a in annotations:
-            _, r_pos, beat_type = a.split()
-            
-            r_pos = int(r_pos)
-            originalr_pos = int(r_pos)
+        beat_indices, labels, r_peaks, r_peaks_original, is_r_valid = parse_annotations(
+            annotations,
+            MLII,
+            ws,
+            size_RR_max)
 
-            beat_index, r_pos, label = parse_beats(r_pos, beat_type, size_RR_max, MLII, (winL, winR))
-            beat_start, beat_end = beat_index
-
-            if label:
-                beat[r].append((MLII[beat_start: beat_end], V1[beat_start: beat_end]))
-                class_ID[r].append(label)
-
-                valid_R[r] = np.append(valid_R[r], 1)
-            else:
-                valid_R[r] = np.append(valid_R[r], 0)
-
-            R_poses[r] = np.append(R_poses[r], r_pos)
-            Original_R_poses[r] = np.append(Original_R_poses[r], originalr_pos)
+        beat[r] = [(MLII[beat_start: beat_end], V1[beat_start: beat_end]) for beat_start, _, beat_end in beat_indices]
+        class_ID[r] = labels
+        valid_R[r] = np.array(is_r_valid)
+        R_poses[r] = np.array(r_peaks)
+        Original_R_poses[r] = np.array(r_peaks_original)
 
         # R_poses[r] = R_poses[r][(valid_R[r] == 1)]
         # Original_R_poses[r] = Original_R_poses[r][(valid_R[r] == 1)]
@@ -624,33 +435,170 @@ def load_signal(DS, winL, winR, do_preprocess):
     return my_db
 
 
-def parse_beats(r_pos, beat_type, size_RR_max, MLII, ws):
+def parse_data_dir(data_dir, record_ids):
+    """
+    return one is a list of ".csv" file, one is a list of ".txt" file
+    under the data_dir, whose name has ids in ds
 
-    winL, winR = ws
+    :param data_dir:
+    :param record_ids: List[int]
+    :return: Tuple(List[str]), two list,
+       one is a list of ".csv" file, one is a list of ".txt" file
+    """
+    # Read files: signal (.csv )  annotations (.txt)
+    fRecords = list()
+    fAnnotations = list()
+
+    lst = os.listdir(data_dir)
+    lst.sort()
+    for filename in lst:
+        if filename.endswith(".csv"):
+            if int(filename[0:3]) in record_ids:
+                fRecords.append(filename)
+        elif filename.endswith(".txt"):
+            if int(filename[0:3]) in record_ids:
+                fAnnotations.append(filename)
+
+    return fRecords, fAnnotations
+
+
+def load_ecg_from_csv(filename):
+    """
+
+    :param filename: str
+    :return:
+    """
+
+    with open(filename, 'r') as f:
+        reader = csv.reader(f, delimiter=',')
+
+        next(reader)  # skip first line!
+        MLII_index = 1
+        V1_index = 2
+
+        ptid = os.path.split(filename)[-1][0:3]
+        if int(ptid) == 114:
+            MLII_index = 2
+            V1_index = 1
+
+        MLII = []
+        V1 = []
+        for row in reader:
+            MLII.append((int(row[MLII_index])))
+            V1.append((int(row[V1_index])))
+
+    return MLII, V1
+
+
+def load_ann_from_txt(filename):
+    """
+
+    :param filename: str
+    :return:
+    """
+
+    with open(filename, "r") as f:
+        next(f)  # skip first line!
+        annotations = []
+        for line in f:
+            annotations.append(line)
+    return annotations
+
+
+def parse_annotations(annotations, ref_sig, ws=(90, 90), size_rr_max=20):
+    """
+
+    :param annotations:
+    :param ref_sig: reference_signal
+    :param ws:
+    :param size_rr_max:
+    :return:
+        beat_indices, List[Tuple], Tuple is (beat_start_index, r_peak_index, beat_end_index).
+        labels, List[int],
+    """
+
+    beat_indices = []
+    labels = []
+    r_peaks = []
+    r_peaks_original = []
+    is_r_valid = []
+
+    for a in annotations:
+        _, r_pos, beat_label = a.split()[:3]
+
+        r_pos = int(r_pos)
+        r_peaks_original.append(r_pos)
+
+        beat_index, label = parse_beats(r_pos, beat_label, ref_sig, ws, rr_max=size_rr_max)
+
+        if label:
+            labels.append(AAMI_CLASSES.index(label))
+            beat_indices.append(beat_index)
+            is_r_valid.append(1)
+        else:
+            is_r_valid.append(0)
+
+        r_peaks.append(beat_index[1])  # r_pos might be changed after parse_beats
+
+    assert len(r_peaks) == len(r_peaks_original) == len(is_r_valid)
+
+    return beat_indices, labels, r_peaks, r_peaks_original, is_r_valid
+
+
+def parse_beats(r_pos, beat_type, ref_sig, ref_ws, is_relocate=True, rr_max=20):
+    """
+    relocate r_peak, get beat index and AAMI class
+
+    :param r_pos: int, r-peak index
+    :param beat_type: str, mitbih label.
+    :param ref_sig: List[float], reference_signal
+    :param ref_ws: Tuple[int], (winL, winR), reference window size
+    :param is_relocate: Bool
+    :param rr_max: int, related to sample rate
+    :return: Tuple, str, str is AAMI label.
+    """
+
     beatL = None
     beatR = None
     class_AAMI = None
 
-    # relocate r_peak by searching maximum in MLII
-    # r_pos between [size_RR_max, len(MLII) - size_RR_max]
-    if size_RR_max < r_pos < len(MLII) - size_RR_max:
-        index, value = max(enumerate(MLII[r_pos - size_RR_max: r_pos + size_RR_max]), key=operator.itemgetter(1))
-        r_pos = (r_pos - size_RR_max) + index
+    winL, winR = ref_ws
 
-    if winL < r_pos < (len(MLII) - winR) and beat_type in MITBIH_CLASSES:
+    if is_relocate:
+        r_pos = relocate_r_peak(r_pos, ref_sig, rr_max)
+
+    if winL < r_pos < (len(ref_sig) - winR) and beat_type in MITBIH_CLASSES:
         beatL = r_pos - winL
         beatR = r_pos + winR
+        class_AAMI = mitbih2aami(beat_type)
 
-        for i in range(0, len(AAMI_CLASSES)):
-            if beat_type in AAMI_CLASSES[i]:
-                class_AAMI = i
-                break  # exit loop
+    return (beatL, r_pos, beatR), class_AAMI
 
-    return (beatL, beatR), r_pos, class_AAMI
+
+def relocate_r_peak(r_pos, ref_signal, rr_max):
+    """
+
+    :param r_pos: int, r_peak index
+    :param ref_signal: List[float], reference signal
+    :param rr_max: int,
+    :return:
+    """
+
+    # relocate r_peak by searching maximum in ref_signal
+    # r_pos between [size_RR_max, len(MLII) - size_RR_max]
+    if rr_max < r_pos < len(ref_signal) - rr_max:
+        index, value = max(enumerate(ref_signal[r_pos - rr_max: r_pos + rr_max]), key=operator.itemgetter(1))
+        return (r_pos - rr_max) + index
+    return r_pos
 
 
 def preprocess_sig(signal):
-    
+    """
+
+    :param signal: List[float]
+    :return: List[float]
+    """
+
     baseline = medfilt(signal, 71)
     baseline = medfilt(baseline, 215)
 
@@ -660,3 +608,66 @@ def preprocess_sig(signal):
 
     # TODO Remove High Freqs
     return signal
+
+
+def mitbih2aami(label):
+    """
+    
+    :param label: str 
+    :return: str 
+    """
+
+    for aami_label, mitbih_label in AAMI.items():
+        if label in mitbih_label:
+            return aami_label
+    return None
+
+
+if __name__ == "__main__":
+    # test level 0
+    load_mit_db(
+        DS="DS1",
+        winL=90,
+        winR=90,
+        do_preprocess=False,
+        maxRR=True,
+        use_RR=False,
+        norm_RR=False,
+        compute_morph=[],
+        db_path="/home/congyu/dataset/ECG/cache/",
+        reduced_DS=True,
+        leads_flag=[1, 0],
+        is_save=False)
+
+    # test level 1
+    load_mit_db(
+        DS="DS1",
+        winL=90,
+        winR=90,
+        do_preprocess=False,
+        maxRR=True,
+        use_RR=True,
+        norm_RR=True,
+        compute_morph=[],
+        db_path="/home/congyu/dataset/ECG/cache/",
+        reduced_DS=True,
+        leads_flag=[1, 0],
+        is_save=False)
+
+    # test level 2
+    features, labels, _ = load_mit_db(
+        DS="DS1",
+        winL=90,
+        winR=90,
+        do_preprocess=False,
+        maxRR=False,
+        use_RR=False,
+        norm_RR=False,
+        compute_morph=['resample_10', 'lbp', 'hbf5', 'wvlt', 'HOS'],
+        db_path="/home/congyu/dataset/ECG/cache/",
+        reduced_DS=True,
+        leads_flag=[1, 0],
+        is_save=False)
+
+    print(features.shape)
+    print(labels[0])

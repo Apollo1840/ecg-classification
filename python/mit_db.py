@@ -26,6 +26,8 @@ def display_signal(beat):
 class RR_intervals:
     def __init__(self):
         # Instance atributes
+
+        # list of pre_RR length
         self.pre_R = np.array([])
         self.post_R = np.array([])
         self.local_R = np.array([])
@@ -37,8 +39,10 @@ class mit_db:
         # Instance atributes
         self.filename = []
         self.raw_signal = []
-        self.beat = np.empty([])  # record, beat, lead
+        self.beat = np.empty([])  # dim: record, beat, lead
         self.class_ID = []
         self.valid_R = []
         self.R_pos = []
         self.orig_R_pos = []
+
+        self.n_record = len(self.class_ID)

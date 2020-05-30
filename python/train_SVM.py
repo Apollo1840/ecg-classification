@@ -213,10 +213,13 @@ def create_oversamp_name(reduced_DS, do_preprocess, compute_morph, winL, winR, m
 
 def main(
         multi_mode='ovo',
-        winL=90, winR=90,
+        winL=90,
+        winR=90,
         do_preprocess=True,
         use_weight_class=True,
-        maxRR=True, use_RR=True, norm_RR=True,
+        maxRR=True,
+        use_RR=True,
+        norm_RR=True,
         compute_morph={''},
         oversamp_method='',
         pca_k=0,
@@ -252,7 +255,8 @@ def main(
 
     # 1. load data
 
-    db_path = '/home/mondejar/dataset/ECG/mitdb/m_learning/scikit/'
+    # store the intermidiary data
+    db_path = '/home/congyu/dataset/ECG/mitdb/m_learning/'
 
     # Load train data
     # tr_ means train_

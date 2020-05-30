@@ -9,13 +9,36 @@ Mondejar Guerra, Victor M.
 """
 
 import numpy as np
+from numpy.polynomial.hermite import hermfit
 from scipy.signal import medfilt
 import scipy.stats
 import pywt
 import operator
+from itertools import chain
+import gc
+import pickle
+import sklearn
+from sklearn import decomposition
+from sklearn.decomposition import PCA, IncrementalPCA
 
-from .mit_db import *
+from mit_db import mit_db, RR_intervals
 
+
+def save_wvlt_PCA(PCA, pca_k, family, level):
+    f = open('Wvlt_' + family + '_' + str(level) + '_PCA_' + str(pca_k) + '.p', 'wb')
+    pickle.dump(PCA, f, 2)
+    f.close()
+
+
+def load_wvlt_PCA(pca_k, family, level):
+    f = open('Wvlt_' + family + '_' + str(level) + '_PCA_' + str(pca_k) + '.p', 'rb')
+    # disable garbage collector
+    gc.disable()  # this improve the required loading time!
+    PCA = pickle.load(f)
+    gc.enable()
+    f.close()
+
+    return PCA
 
 def compute_RR_intervals(R_poses):
     """
@@ -24,9 +47,14 @@ def compute_RR_intervals(R_poses):
         (pre_RR, post_RR, local_RR, global_RR)
     for each beat
 
+    Pre_RR: int, distance between actual and previous R peak
+    post_RR: int, distance between actual and next R peak
+    Local_RR: AVG from last 10 pre_R values
+    global_RR: AVG from past 5 minutes = 108000 samples
     :param R_poses:
-    :return:
+    :return: RR_intervals object
     """
+
     features_RR = RR_intervals()
 
     pre_R = np.array([], dtype=int)
@@ -47,7 +75,7 @@ def compute_RR_intervals(R_poses):
 
     post_R = np.append(post_R, post_R[-1])
 
-    # Local_R: AVG from last 10 pre_R values
+    # Local_RR: AVG from last 10 pre_R values
     for i in range(0, len(R_poses)):
         num = 0
         avg_val = 0
@@ -57,8 +85,7 @@ def compute_RR_intervals(R_poses):
                 num = num + 1
         local_R = np.append(local_R, avg_val / float(num))
 
-    # Global R AVG: from full past-signal
-    # TODO: AVG from past 5 minutes = 108000 samples
+    # Global R : AVG from past 5 minutes = 108000 samples
     global_R = np.append(global_R, pre_R[0])
     for i in range(1, len(R_poses)):
         num = 0
@@ -71,6 +98,7 @@ def compute_RR_intervals(R_poses):
         # num = i
         global_R = np.append(global_R, avg_val / float(num))
 
+    # why not directly assign features_RR.pre_R = pre_R
     for i in range(0, len(R_poses)):
         features_RR.pre_R = np.append(features_RR.pre_R, pre_R[i])
         features_RR.post_R = np.append(features_RR.post_R, post_R[i])
@@ -136,7 +164,7 @@ def compute_hos_descriptor(beat, n_intervals, lag):
     hos_b = np.zeros(((n_intervals - 1) * 2))
     for i in range(0, n_intervals - 1):
         pose = (lag * (i + 1))
-        interval = beat[(pose - (lag / 2)):(pose + (lag / 2))]
+        interval = beat[(pose - (lag // 2)):(pose + (lag // 2))]
 
         # Skewness  
         hos_b[i] = scipy.stats.skew(interval, 0, True)
@@ -170,10 +198,10 @@ def compute_Uniform_LBP(signal, neigh=8):
     # NOTE: Reduce sampling by half
     # signal_avg = scipy.signal.resample(signal, len(signal) / avg_win_size)
 
-    for i in range(neigh / 2, len(signal) - neigh / 2):
+    for i in range(neigh // 2, len(signal) - neigh // 2):
         pattern = np.zeros(neigh)
         ind = 0
-        for n in range(-neigh / 2, 0) + range(1, neigh / 2 + 1):
+        for n in chain(range(-neigh // 2, 0), range(1, neigh // 2 + 1)):
             if signal[i] > signal[i + n]:
                 pattern[ind] = 1
             ind += 1
@@ -198,12 +226,12 @@ def compute_LBP(signal, neigh=4):
     # TODO: use some type of average of the data instead the full signal...
     # Average window-5 of the signal?
     # signal_avg = average_signal(signal, avg_win_size)
-    signal_avg = scipy.signal.resample(signal, len(signal) / avg_win_size)
+    signal_avg = scipy.signal.resample(signal, len(signal) // avg_win_size)
 
-    for i in range(neigh / 2, len(signal) - neigh / 2):
+    for i in range(neigh // 2, len(signal) - neigh // 2):
         pattern = np.zeros(neigh)
         ind = 0
-        for n in range(-neigh / 2, 0) + range(1, neigh / 2 + 1):
+        for n in chain(range(-neigh // 2, 0), range(1, neigh // 2 + 1)):
             if signal[i] > signal[i + n]:
                 pattern[ind] = 1
             ind += 1
@@ -228,3 +256,279 @@ def compute_HBF(beat):
     coeffs_hbf = np.concatenate((coeffs_HBF_3, coeffs_HBF_4, coeffs_HBF_5))
 
     return coeffs_hbf
+
+
+
+
+def calc_RR_intervals(r_poses, valid_r):
+    """
+
+    :param r_poses: List[List[int]], dim: record, r_peaks
+    :param valid_r: List[List[int]], dim: record, valid_r
+    :return: List[RR_interval]
+    """
+
+    RR = [RR_intervals() for _ in range(len(r_poses))]
+
+    for id_record in range(len(r_poses)):
+        RR[id_record] = compute_RR_intervals(r_poses[id_record])
+
+        # only consider valid r_peak
+        RR[id_record].pre_R = RR[id_record].pre_R[(valid_r[id_record] == 1)]
+        RR[id_record].post_R = RR[id_record].post_R[(valid_r[id_record] == 1)]
+        RR[id_record].local_R = RR[id_record].local_R[(valid_r[id_record] == 1)]
+        RR[id_record].global_R = RR[id_record].global_R[(valid_r[id_record] == 1)]
+
+    return RR
+
+
+def get_features_rr(RR):
+    """
+
+    :param RR: List[RR_intervals()]
+    :return:
+    """
+
+    f_RR = np.empty((0, 4))
+    for id_record in range(len(RR)):
+        row = np.column_stack((RR[id_record].pre_R,
+                               RR[id_record].post_R,
+                               RR[id_record].local_R,
+                               RR[id_record].global_R))
+        f_RR = np.vstack((f_RR, row))
+    return f_RR
+
+
+def get_features_rr_norm(RR):
+    """
+
+    :param RR: List[RR_intervals()]
+    :return:
+    """
+
+    f_RR_norm = np.empty((0, 4))
+    for id_record in range(len(RR)):
+        # Compute avg values!
+        avg_pre_R = np.average(RR[id_record].pre_R)
+        avg_post_R = np.average(RR[id_record].post_R)
+        avg_local_R = np.average(RR[id_record].local_R)
+        avg_global_R = np.average(RR[id_record].global_R)
+
+        row = np.column_stack((RR[id_record].pre_R / avg_pre_R, RR[id_record].post_R / avg_post_R, RR[id_record].local_R / avg_local_R,
+                               RR[id_record].global_R / avg_global_R))
+        f_RR_norm = np.vstack((f_RR_norm, row))
+
+    return f_RR_norm
+
+
+def get_features_raw(beats, leads_flag):
+
+    # beats, dim: record, id_beat, id_lead, signal
+    num_leads = sum(leads_flag)
+
+    beat_len = len(beats[0][0][0])
+
+    f_raw = np.empty((0, beat_len * num_leads))
+
+    for p in range(len(beats)):
+        for beat in beats[p]:
+            f_raw_lead = np.empty([])
+            for s in range(2):
+                if leads_flag[s] == 1:
+                    if f_raw_lead.size == 1:
+                        f_raw_lead = beat[s]
+                    else:
+                        f_raw_lead = np.hstack((f_raw_lead, beat[s]))
+            f_raw = np.vstack((f_raw, f_raw_lead))
+
+    return f_raw
+
+
+def get_features_resample_10(beats, leads_flag):
+    num_leads = sum(leads_flag)
+
+    f_raw = np.empty((0, 10 * num_leads))
+
+    for p in range(len(beats)):
+        for beat in beats[p]:
+            f_raw_lead = np.empty([])
+            for s in range(2):
+                if leads_flag[s] == 1:
+                    resamp_beat = scipy.signal.resample(beat[s], 10)
+                    if f_raw_lead.size == 1:
+                        f_raw_lead = resamp_beat
+                    else:
+                        f_raw_lead = np.hstack((f_raw_lead, resamp_beat))
+            f_raw = np.vstack((f_raw, f_raw_lead))
+    return f_raw
+
+
+# LBP 1D
+# 1D-local binary pattern based feature extraction for classification of epileptic EEG signals: 2014, unas 55 citas, Q2-Q1 Matematicas
+# https://ac.els-cdn.com/S0096300314008285/1-s2.0-S0096300314008285-main.pdf?_tid=8a8433a6-e57f-11e7-98ec-00000aab0f6c&acdnat=1513772341_eb5d4d26addb6c0b71ded4fd6cc23ed5
+
+# 1D-LBP method, which derived from implementation steps of 2D-LBP, was firstly proposed by Chatlani et al. for detection of speech signals that is non-stationary in nature [23]
+
+# From Raw signal
+
+# TODO: Some kind of preprocesing or clean high frequency noise?
+
+# Compute 2 Histograms: LBP or Uniform LBP
+# LBP 8 = 0-255
+# U-LBP 8 = 0-58
+# Uniform LBP are only those pattern wich only presents 2 (or less) transitions from 0-1 or 1-0
+# All the non-uniform patterns are asigned to the same value in the histogram
+def get_features_lbp(beats, leads_flag):
+    num_leads = sum(leads_flag)
+
+    f_lbp = np.empty((0, 16 * num_leads))
+
+    for p in range(len(beats)):
+        for beat in beats[p]:
+            f_lbp_lead = np.empty([])
+            for s in range(2):
+                if leads_flag[s] == 1:
+                    if f_lbp_lead.size == 1:
+
+                        f_lbp_lead = compute_LBP(beat[s], 4)
+                    else:
+                        f_lbp_lead = np.hstack((f_lbp_lead, compute_LBP(beat[s], 4)))
+            f_lbp = np.vstack((f_lbp, f_lbp_lead))
+
+    return f_lbp
+
+
+def get_features_u_lbp(beats, leads_flag):
+    num_leads = sum(leads_flag)
+
+    f_lbp = np.empty((0, 59 * num_leads))
+
+    for p in range(len(beats)):
+        for beat in beats[p]:
+            f_lbp_lead = np.empty([])
+            for s in range(2):
+                if leads_flag[s] == 1:
+                    if f_lbp_lead.size == 1:
+
+                        f_lbp_lead = compute_Uniform_LBP(beat[s], 8)
+                    else:
+                        f_lbp_lead = np.hstack((f_lbp_lead, compute_Uniform_LBP(beat[s], 8)))
+            f_lbp = np.vstack((f_lbp, f_lbp_lead))
+
+    return f_lbp
+
+
+def get_features_hbf5(beats, leads_flag):
+    num_leads = sum(leads_flag)
+
+    f_hbf = np.empty((0, 15 * num_leads))
+    for p in range(len(beats)):
+        for beat in beats[p]:
+            f_hbf_lead = np.empty([])
+            for s in range(2):
+                if leads_flag[s] == 1:
+                    if f_hbf_lead.size == 1:
+
+                        f_hbf_lead = compute_HBF(beat[s])
+                    else:
+                        f_hbf_lead = np.hstack((f_hbf_lead, compute_HBF(beat[s])))
+            f_hbf = np.vstack((f_hbf, f_hbf_lead))
+    return f_hbf
+
+
+def get_features_wvlt(beats, leads_flag):
+    num_leads = sum(leads_flag)
+
+    f_wav = np.empty((0, 23 * num_leads))
+
+    for p in range(len(beats)):
+        for b in beats[p]:
+            f_wav_lead = np.empty([])
+            for s in range(2):
+                if leads_flag[s] == 1:
+                    if f_wav_lead.size == 1:
+                        f_wav_lead = compute_wavelet_descriptor(b[s], 'db1', 3)
+                    else:
+                        f_wav_lead = np.hstack((f_wav_lead, compute_wavelet_descriptor(b[s], 'db1', 3)))
+            f_wav = np.vstack((f_wav, f_wav_lead))
+            # f_wav = np.vstack((f_wav, compute_wavelet_descriptor(b,  'db1', 3)))
+    return f_wav
+
+
+def get_features_wvlt_pca(beats, leads_flag, DS, family, level, pca_k):
+    num_leads = sum(leads_flag)
+
+    f_wav = np.empty((0, 23 * num_leads))
+
+    for p in range(len(beats)):
+        for b in beats[p]:
+            f_wav_lead = np.empty([])
+            for s in range(2):
+                if leads_flag[s] == 1:
+                    if f_wav_lead.size == 1:
+                        f_wav_lead = compute_wavelet_descriptor(b[s], family, level)
+                    else:
+                        f_wav_lead = np.hstack((f_wav_lead, compute_wavelet_descriptor(b[s], family, level)))
+            f_wav = np.vstack((f_wav, f_wav_lead))
+            # f_wav = np.vstack((f_wav, compute_wavelet_descriptor(b,  'db1', 3)))
+
+    if DS == 'DS1':
+        # Compute PCA
+        # PCA = sklearn.decomposition.KernelPCA(pca_k) # gamma_pca
+        IPCA = IncrementalPCA(n_components=pca_k,
+                              batch_size=10)  # NOTE: due to memory errors, we employ IncrementalPCA
+        IPCA.fit(f_wav)
+
+        # Save PCA
+        save_wvlt_PCA(IPCA, pca_k, family, level)
+    else:
+        # Load PCAfrom sklearn.decomposition import PCA, IncrementalPCA
+        IPCA = load_wvlt_PCA(pca_k, family, level)
+
+    # Extract the PCA
+    # f_wav_PCA = np.empty((0, pca_k * num_leads))
+    f_wav_PCA = IPCA.transform(f_wav)
+
+    return f_wav
+
+
+def get_featurs_hos(beats, leads_flag):
+
+    beat_len = len(beats[0][0][0])
+    num_leads = sum(leads_flag)
+
+    n_intervals = 6
+    lag = int(round((beat_len) / n_intervals))
+
+    f_HOS = np.empty((0, (n_intervals - 1) * 2 * num_leads))
+    for p in range(len(beats)):
+        for b in beats[p]:
+            f_HOS_lead = np.empty([])
+            for s in range(2):
+                if leads_flag[s] == 1:
+                    if f_HOS_lead.size == 1:
+                        f_HOS_lead = compute_hos_descriptor(b[s], n_intervals, lag)
+                    else:
+                        f_HOS_lead = np.hstack((f_HOS_lead, compute_hos_descriptor(b[s], n_intervals, lag)))
+            f_HOS = np.vstack((f_HOS, f_HOS_lead))
+            # f_HOS = np.vstack((f_HOS, compute_hos_descriptor(b, n_intervals, lag)))
+    return f_HOS
+
+
+def get_features_mymorph(beats, leads_flag, winL, winR):
+    num_leads = sum(leads_flag)
+
+    f_myMorhp = np.empty((0, 4 * num_leads))
+    for p in range(len(beats)):
+        for b in beats[p]:
+            f_myMorhp_lead = np.empty([])
+            for s in range(2):
+                if leads_flag[s] == 1:
+                    if f_myMorhp_lead.size == 1:
+                        f_myMorhp_lead = compute_my_own_descriptor(b[s], winL, winR)
+                    else:
+                        f_myMorhp_lead = np.hstack(
+                            (f_myMorhp_lead, compute_my_own_descriptor(b[s], winL, winR)))
+            f_myMorhp = np.vstack((f_myMorhp, f_myMorhp_lead))
+            # f_myMorhp = np.vstack((f_myMorhp, compute_my_own_descriptor(b, winL, winR)))
+    return f_myMorhp
