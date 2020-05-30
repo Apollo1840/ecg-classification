@@ -13,6 +13,9 @@ Mondejar Guerra, Victor M.
 
 import matplotlib.pyplot as plt
 import numpy as np
+import time
+
+from features_ECG import * 
 
 
 # Show a 2D plot with the data in beat
@@ -39,10 +42,131 @@ class mit_db:
         # Instance atributes
         self.filename = []
         self.raw_signal = []
-        self.beat = np.empty([])  # dim: record, beat, lead
+        self.beat = np.empty([])  # dim: record, beat, lead, signal
         self.class_ID = []
         self.valid_R = []
         self.R_pos = []
         self.orig_R_pos = []
 
         self.n_record = len(self.class_ID)
+        
+    def get_features(self, leads_flag, maxRR, use_RR, norm_RR, compute_morph, DS, winL, winR):
+        """
+
+        :param leads_flag: [MLII, V1] set the value to 0 or 1 to reference if that lead is used
+        :param maxRR: Bool, relocate r-peak or not
+        :param use_RR: Bool
+        :param norm_RR: Bool
+        :param compute_morph: List[str] or Set[str],
+                can be ['resample_10', 'raw', 'u-lbp', 'lbp', 'hbf5', 'wvlt', 'wvlt+pca', 'HOS', 'myMorph']
+        :param DS: Str, "DS1" or "DS2"
+        :param winL: int
+        :param winR: int
+        :return:
+        """
+
+        features = np.array([], dtype=float)
+
+        # before actual get the features, there are something to prepare:
+        # prepare for use_RR and norm_RR, if it is needed
+        RR = []
+        if use_RR or norm_RR:
+            if maxRR:
+                r_poses = self.R_pos
+            else:
+                r_poses = self.orig_R_pos
+            RR = calc_RR_intervals(r_poses, self.valid_R)
+
+        #########################################################################
+        # Compute RR intervals features
+
+        if use_RR:
+            features_rr = get_features_rr(RR)
+            features = np.column_stack((features, features_rr)) if features.size else features_rr
+
+        if norm_RR:
+            features_rr_norm = get_features_rr_norm(RR)
+            features = np.column_stack((features, features_rr_norm)) if features.size else features_rr_norm
+
+        ##########################################################################
+        # Compute morphological features
+
+        if 'raw' in compute_morph:
+            print("Raw ...")
+            start = time.time()
+
+            features_raw = get_features_raw(self.beat, leads_flag)
+            features = np.column_stack((features, features_raw)) if features.size else features_raw
+
+            end = time.time()
+            print("Time raw: " + str(format(end - start, '.2f')) + " sec")
+
+        if 'resample_10' in compute_morph:
+            print("Resample_10 ...")
+            start = time.time()
+
+            features_raw = get_features_resample_10(self.beat, leads_flag)
+            features = np.column_stack((features, features_raw)) if features.size else features_raw
+
+            end = time.time()
+            print("Time resample: " + str(format(end - start, '.2f')) + " sec")
+
+        if 'u-lbp' in compute_morph:
+            print("u-lbp ...")
+
+            features_u_lbp = get_features_u_lbp(self.beat, leads_flag)
+            features = np.column_stack((features, features_u_lbp)) if features.size else features_u_lbp
+
+            print(features.shape)
+
+        if 'lbp' in compute_morph:
+            print("lbp ...")
+
+            features_lbp = get_features_lbp(self.beat, leads_flag)
+            features = np.column_stack((features, features_lbp)) if features.size else features_lbp
+
+            print(features.shape)
+
+        if 'hbf5' in compute_morph:
+            print("hbf ...")
+
+            features_temp = get_features_hbf5(self.beat, leads_flag)
+            features = np.column_stack((features, features_temp)) if features.size else features_temp
+
+            print(features.shape)
+
+        # Wavelets
+        if 'wvlt' in compute_morph:
+            print("Wavelets ...")
+
+            features_temp = get_features_wvlt(self.beat, leads_flag)
+            features = np.column_stack((features, features_temp)) if features.size else features_temp
+
+        # Wavelets
+        if 'wvlt+pca' in compute_morph:
+            features_temp = get_features_wvlt_pca(self.beat, leads_flag, DS, family="db1", level=3, pca_k=7)
+            features = np.column_stack((features, features_temp)) if features.size else features_temp
+
+        # HOS
+        if 'HOS' in compute_morph:
+            print("HOS ...")
+            features_temp = get_featurs_hos(self.beat, leads_flag)
+            features = np.column_stack((features, features_temp)) if features.size else features_temp
+            print(features.shape)
+
+        # My morphological descriptor
+        if 'myMorph' in compute_morph:
+            print("My Descriptor ...")
+            features_temp = get_features_mymorph(self.beat, leads_flag, winL, winR)
+            features = np.column_stack((features, features_temp)) if features.size else features_temp
+
+        return features
+
+    def get_labels(self):
+        return np.array(sum(self.class_ID, [])).flatten()
+
+    def get_n_beats_per_record(self):
+        patient_num_beats = np.array([], dtype=np.int32)
+        for p in range(len(self.beat)):
+            patient_num_beats = np.append(patient_num_beats, len(self.beat[p]))
+        return patient_num_beats
