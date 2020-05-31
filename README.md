@@ -50,6 +50,7 @@ Performed using Matlab 2016b 64 bits
     
     1) run:
 
+            mkdir -p /home/congyu/dataset/ECG/mitbih
             rsync -Cavz physionet.org::mitdb /home/congyu/dataset/ECG/mitbih
             
             # or

@@ -11,8 +11,8 @@ Mondejar Guerra, Victor M.
 import numpy as np
 from sklearn import svm
 
-from .evaluation_AAMI import *
-from .aggregation_voting_strategies import *
+from evaluation_AAMI import *
+from aggregation_voting_strategies import *
 
 
 # Eval the SVM model and export the results
@@ -50,127 +50,145 @@ def run_cross_val(features, labels, patient_num_beats, division_mode, k):
 
     # C_values
     # gamma_values
-    C_values = [0.0001, 0.001, 0.01, 0.1, 1, 10, 50, 100, 200, 1000]
+    C_values = [0.1]
+    # C_values = [0.0001, 0.001, 0.01, 0.1, 1, 10, 50, 100, 200, 1000]
 
     # ijk_scores = np.zeros(len(C_values))
-    cv_scores = np.zeros(len(C_values))
-    index_cv = 0
+    cv_scores = []
+    for c_svm in C_values:
+        cv_scores.append(run_cross_val_single(features, labels, patient_num_beats, division_mode, c_svm, k))
+
+    return np.array(cv_scores), C_values
+
+
+def run_cross_val_single(features, labels, patient_num_beats, division_mode, c_value, k):
+    """
+
+    :param features:
+    :param labels:
+    :param patient_num_beats:
+    :param division_mode: str.  'pat_cv' or 'beat_cv'
+    :param k: int.
+    :return:
+    """
+
+    print("Runing Cross validation...")
+
+    C_value = c_value
+
+    # ijk_scores = np.zeros(len(C_values))
+    cv_score = 0
     n_classes = 4
 
-    for c_svm in C_values:
-        # for g in g_values...
+    features_k_fold = [np.array([]) for i in range(k)]
+    label_k_fold = [np.array([]) for i in range(k)]
 
-        features_k_fold = [np.array([]) for i in range(k)]
-        label_k_fold = [np.array([]) for i in range(k)]
+    ################
+    # PREPARE DATA
+    ################
+    if division_mode == 'pat_cv':
+        k = 22
+        base = 0
+        for kk in range(k):
+            features_k_fold[kk] = features[base:base + patient_num_beats[kk]]
+            label_k_fold[kk] = labels[base:base + patient_num_beats[kk]]
+            base = patient_num_beats[kk] + 1
 
-        ################
-        # PREPARE DATA
-        ################
-        if division_mode == 'pat_cv':
-            k = 22
+    # NOTE: 22 k-folds will be very computational cost
+    # NOTE: division by patient and oversampling couldnt by used!!!!
+    if division_mode == 'beat_cv':
+
+        # NOTE: class sklearn.model_selection.StratifiedKFold(n_splits=3, shuffle=False, random_state=None)[source]
+        # Stratified K-Folds cross-validator
+        # Provides train/test indices to split data in train/test sets.
+        # Thirun_cross_vals cross-validation object is a variation of KFold that returns stratified folds.
+        # The folds are made by preserving the percentage of samples for each class!!
+
+        # Sort features and labels by class ID
+        features_by_class = {}
+
+        for c in range(n_classes):
+            features_by_class[c] = features[labels == c]
+
+            # Then split each instances group in k-folds
+            # generate the k-folds with the same class ID proportions in each one
+            instances_class = len(features_by_class[c])
+            increment = instances_class // k
             base = 0
             for kk in range(k):
-                features_k_fold[kk] = features[base:base + patient_num_beats[kk]]
-                label_k_fold[kk] = labels[base:base + patient_num_beats[kk]]
-                base = patient_num_beats[kk] + 1
+                features_k_fold[kk] = np.vstack(
+                    (features_k_fold[kk], features_by_class[c][base:base + increment])) if features_k_fold[
+                    kk].size else features_by_class[c][base:base + increment]
+                label_k_fold[kk] = np.hstack((label_k_fold[kk], np.zeros(increment) + c)) if label_k_fold[
+                    kk].size else np.zeros(increment) + c
+                base = increment + 1
 
-        # NOTE: 22 k-folds will be very computational cost
-        # NOTE: division by patient and oversampling couldnt by used!!!!
-        if division_mode == 'beat_cv':
+    ################
+    # RUN CROSS VAL
+    ################
+    for kk in range(k):
 
-            # NOTE: class sklearn.model_selection.StratifiedKFold(n_splits=3, shuffle=False, random_state=None)[source]
-            # Stratified K-Folds cross-validator
-            # Provides train/test indices to split data in train/test sets.
-            # Thirun_cross_vals cross-validation object is a variation of KFold that returns stratified folds. 
-            # The folds are made by preserving the percentage of samples for each class!!
+        # 1) Split
+        # Rotate each iteration one fold for test and the rest for training
 
-            # Sort features and labels by class ID
-            features_by_class = {}
+        # for each k-fold select the train and validation data
+        val_features = features_k_fold[kk]
+        val_labels = label_k_fold[kk]
+        tr_features = np.array([])
+        tr_labels = np.array([])
+        for kkk in range(k):
+            if kkk != kk:
+                tr_features = np.vstack((tr_features, features_k_fold[kkk])) if tr_features.size else \
+                    features_k_fold[kkk]  # select k fold
+                tr_labels = np.append(tr_labels, label_k_fold[kkk])
 
-            for c in range(n_classes):
-                features_by_class[c] = features[labels == c]
+        # pipeline = Pipeline([('transformer', scalar), ('estimator', clf)])
+        # instead of "StandardScaler()"
 
-                # Then split each instances group in k-folds
-                # generate the k-folds with the same class ID proportions in each one
-                instances_class = len(features_by_class[c])
-                increment = instances_class / k
-                base = 0
-                for kk in range(k):
-                    features_k_fold[kk] = np.vstack(
-                        (features_k_fold[kk], features_by_class[c][base:base + increment])) if features_k_fold[
-                        kk].size else features_by_class[c][base:base + increment]
-                    label_k_fold[kk] = np.hstack((label_k_fold[kk], np.zeros(increment) + c)) if label_k_fold[
-                        kk].size else np.zeros(increment) + c
-                    base = increment + 1
+        ####################################################
+        # 2) Train
+        multi_mode = 'ovo'
 
-        ################
-        # RUN CROSS VAL
-        ################
-        for kk in range(k):
+        # get class_weights based on tr_labels
+        class_weights = {}
+        for c in range(n_classes):
+            class_weights.update({c: len(tr_labels) / float(np.count_nonzero(tr_labels == c))})
 
-            # 1) Split
-            # Rotate each iteration one fold for test and the rest for training
+        # class_weight='balanced',
+        svm_model = svm.SVC(C=C_value, kernel='rbf', degree=3, gamma='auto',
+                            coef0=0.0, shrinking=True, probability=False, tol=0.001,
+                            cache_size=200, class_weight=class_weights, verbose=False,
+                            max_iter=-1, decision_function_shape=multi_mode, random_state=None)
 
-            # for each k-fold select the train and validation data
-            val_features = features_k_fold[kk]
-            val_labels = label_k_fold[kk]
-            tr_features = np.array([])
-            tr_labels = np.array([])
-            for kkk in range(k):
-                if kkk != kk:
-                    tr_features = np.vstack((tr_features, features_k_fold[kkk])) if tr_features.size else \
-                        features_k_fold[kkk]  # select k fold
-                    tr_labels = np.append(tr_labels, label_k_fold[kkk])
+        # Let's Train!
+        svm_model.fit(tr_features, tr_labels)
 
-            # pipeline = Pipeline([('transformer', scalar), ('estimator', clf)])
-            # instead of "StandardScaler()"
+        #########################################################################
+        # 3) Test SVM model
+        # ovo_voting:
+        # Simply add 1 to the win class
+        perf_measures = eval_crossval_fold(svm_model, val_features, val_labels,
+                                           multi_mode, 'ovo_voting_exp')
 
-            ####################################################
-            # 2) Train
-            multi_mode = 'ovo'
+        # ijk_scores[index_cv] += perf_measures.Ijk
 
-            # get class_weights based on tr_labels
-            class_weights = {}
-            for c in range(n_classes):
-                class_weights.update({c: len(tr_labels) / float(np.count_nonzero(tr_labels == c))})
+        cv_score += np.average(perf_measures.F_measure)
 
-            # class_weight='balanced',
-            svm_model = svm.SVC(C=c_svm, kernel='rbf', degree=3, gamma='auto',
-                                coef0=0.0, shrinking=True, probability=False, tol=0.001,
-                                cache_size=200, class_weight=class_weights, verbose=False,
-                                max_iter=-1, decision_function_shape=multi_mode, random_state=None)
+        # TODO g-mean?
+        # Zhang et al computes the g-mean.
+        # But they computed the g-mean value for each SVM model of the 1 vs 1. NvsS, NvsV, ..., SvsV....
 
-            # Let's Train!
-            svm_model.fit(tr_features, tr_labels)
+        # NOTE we could use the F-measure average from each class??
 
-            #########################################################################
-            # 3) Test SVM model
-            # ovo_voting:
-            # Simply add 1 to the win class
-            perf_measures = eval_crossval_fold(svm_model, val_features, val_labels,
-                                               multi_mode, 'ovo_voting_exp')
+        print("C value (" + str(C_value) + " Cross val k " + str(kk) + "/" + str(k) + "  AVG(F-measure) = " + str(
+            cv_score / float(kk + 1)))
+        # range k
 
-            # ijk_scores[index_cv] += perf_measures.Ijk
+    # beat division
 
-            cv_scores[index_cv] += np.average(perf_measures.F_measure)
-
-            # TODO g-mean?
-            # Zhang et al computes the g-mean.
-            # But they computed the g-mean value for each SVM model of the 1 vs 1. NvsS, NvsV, ..., SvsV....
-
-            # NOTE we could use the F-measure average from each class??
-
-            print("C value (" + str(c_svm) + " Cross val k " + str(kk) + "/" + str(k) + "  AVG(F-measure) = " + str(
-                cv_scores[index_cv] / float(kk + 1)))
-            # range k
-
-        # beat division
-
-        cv_scores[index_cv] /= float(k)  # Average this result with the rest of the k-folds
-        # NOTE: what measure maximize in the cross val???? 
-
-        index_cv += 1
+    cv_score /= float(k)  # Average this result with the rest of the k-folds
+    # NOTE: what measure maximize in the cross val????
 
     # c_values
 
-    return cv_scores, C_values
+    return cv_score

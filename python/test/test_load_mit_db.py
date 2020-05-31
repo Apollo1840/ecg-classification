@@ -23,13 +23,24 @@ class TestECGMethods(unittest.TestCase):
     def test_labels(self):
         # labels = np.array(sum(my_db.class_ID, [])).flatten()
         pass
-    
+
     def test_parse_annotations(self):
+        fRecords, fAnnotations = parse_data_dir(DATA_DIR, DS_bank["reduced"]["DS1"])
+        filename = os.path.join(DATA_DIR, fRecords[0])
+        MLII, V1 = load_ecg_from_csv(filename)
+        filename = os.path.join(DATA_DIR, fAnnotations[0])
+        annotations = load_ann_from_txt(filename)
         beat_indices, labels, r_peaks, r_peaks_original, is_r_valid = parse_annotations(
             annotations,
             MLII,
-            ws,
+            (90, 90),
             size_rr_max=20)
+
+        print(len(r_peaks))
+        print(len(beat_indices))
+        print(len(beat_indices[0]))  # 3
+
+        # todo: plot the beat
 
 
 if __name__ == '__main__':

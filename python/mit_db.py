@@ -15,7 +15,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import time
 
-from features_ECG import * 
+from features_ECG import (calc_RR_intervals,
+                          get_features_resample, get_features_rr, get_featurs_hos, get_features_lbp,
+                          get_features_raw, get_features_wvlt, get_features_hbf5, get_features_rr_norm,
+                          get_features_u_lbp, get_features_mymorph, get_features_wvlt_pca)
 
 
 # Show a 2D plot with the data in beat
@@ -23,18 +26,6 @@ def display_signal(beat):
     plt.plot(beat)
     plt.ylabel('Signal')
     plt.show()
-
-
-# Class for RR intervals features
-class RR_intervals:
-    def __init__(self):
-        # Instance atributes
-
-        # list of pre_RR length
-        self.pre_R = np.array([])
-        self.post_R = np.array([])
-        self.local_R = np.array([])
-        self.global_R = np.array([])
 
 
 class mit_db:
@@ -49,7 +40,7 @@ class mit_db:
         self.orig_R_pos = []
 
         self.n_record = len(self.class_ID)
-        
+
     def get_features(self, leads_flag, maxRR, use_RR, norm_RR, compute_morph, DS, winL, winR):
         """
 
@@ -105,7 +96,7 @@ class mit_db:
             print("Resample_10 ...")
             start = time.time()
 
-            features_raw = get_features_resample_10(self.beat, leads_flag)
+            features_raw = get_features_resample(self.beat, leads_flag)
             features = np.column_stack((features, features_raw)) if features.size else features_raw
 
             end = time.time()

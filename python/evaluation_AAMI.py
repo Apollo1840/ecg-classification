@@ -91,7 +91,7 @@ def compute_AAMI_performance_measures(predictions, gt_labels):
 
         pf_ms.Recall[i] = TP / (TP + FN)
         pf_ms.Precision[i] = TP / (TP + FP)
-        pf_ms.Specificity[i] = TN / (TN + FP);  # 1-FPR
+        pf_ms.Specificity[i] = TN / (TN + FP)  # 1-FPR
         pf_ms.Acc[i] = (TP + TN) / (TP + TN + FP + FN)
 
         if TP == 0:

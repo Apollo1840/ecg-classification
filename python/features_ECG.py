@@ -21,7 +21,24 @@ import sklearn
 from sklearn import decomposition
 from sklearn.decomposition import PCA, IncrementalPCA
 
-from mit_db import mit_db, RR_intervals
+
+# Class for RR intervals features
+class RR_intervals:
+    def __init__(self):
+        # Instance atributes
+
+        # list of pre_RR length
+        self.pre_R = np.array([])
+        self.post_R = np.array([])
+        self.local_R = np.array([])
+        self.global_R = np.array([])
+
+
+uniform_pattern_list = np.array(
+    [0, 1, 2, 3, 4, 6, 7, 8, 12, 14, 15, 16, 24, 28, 30, 31, 32, 48, 56, 60, 62, 63, 64, 96, 112, 120, 124, 126, 127,
+     128,
+     129, 131, 135, 143, 159, 191, 192, 193, 195, 199, 207, 223, 224, 225, 227, 231, 239, 240, 241, 243, 247, 248, 249,
+     251, 252, 253, 254, 255])
 
 
 def save_wvlt_PCA(PCA, pca_k, family, level):
@@ -39,6 +56,7 @@ def load_wvlt_PCA(pca_k, family, level):
     f.close()
 
     return PCA
+
 
 def compute_RR_intervals(R_poses):
     """
@@ -179,13 +197,6 @@ def compute_hos_descriptor(beat, n_intervals, lag):
     return hos_b
 
 
-uniform_pattern_list = np.array(
-    [0, 1, 2, 3, 4, 6, 7, 8, 12, 14, 15, 16, 24, 28, 30, 31, 32, 48, 56, 60, 62, 63, 64, 96, 112, 120, 124, 126, 127,
-     128,
-     129, 131, 135, 143, 159, 191, 192, 193, 195, 199, 207, 223, 224, 225, 227, 231, 239, 240, 241, 243, 247, 248, 249,
-     251, 252, 253, 254, 255])
-
-
 # Compute the uniform LBP 1D from signal with neigh equal to number of neighbours
 # and return the 59 histogram:
 # 0-57: uniform patterns
@@ -258,8 +269,6 @@ def compute_HBF(beat):
     return coeffs_hbf
 
 
-
-
 def calc_RR_intervals(r_poses, valid_r):
     """
 
@@ -314,15 +323,15 @@ def get_features_rr_norm(RR):
         avg_local_R = np.average(RR[id_record].local_R)
         avg_global_R = np.average(RR[id_record].global_R)
 
-        row = np.column_stack((RR[id_record].pre_R / avg_pre_R, RR[id_record].post_R / avg_post_R, RR[id_record].local_R / avg_local_R,
-                               RR[id_record].global_R / avg_global_R))
+        row = np.column_stack(
+            (RR[id_record].pre_R / avg_pre_R, RR[id_record].post_R / avg_post_R, RR[id_record].local_R / avg_local_R,
+             RR[id_record].global_R / avg_global_R))
         f_RR_norm = np.vstack((f_RR_norm, row))
 
     return f_RR_norm
 
 
 def get_features_raw(beats, leads_flag):
-
     # beats, dim: record, id_beat, id_lead, signal
     num_leads = sum(leads_flag)
 
@@ -344,7 +353,7 @@ def get_features_raw(beats, leads_flag):
     return f_raw
 
 
-def get_features_resample_10(beats, leads_flag):
+def get_features_resample(beats, leads_flag):
     num_leads = sum(leads_flag)
 
     f_raw = np.empty((0, 10 * num_leads))
@@ -493,7 +502,6 @@ def get_features_wvlt_pca(beats, leads_flag, DS, family, level, pca_k):
 
 
 def get_featurs_hos(beats, leads_flag):
-
     beat_len = len(beats[0][0][0])
     num_leads = sum(leads_flag)
 
