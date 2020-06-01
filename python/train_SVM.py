@@ -761,20 +761,19 @@ def trival_main(
 
 
 if __name__ == "__main__":
-    """
-        trival_main(
-        multi_mode="ovr",
-        winL=90,
-        winR=90,
-        do_preprocess=False,
-        maxRR=False,
-        use_RR=False,
-        norm_RR=False,
-        compute_morph=['resample_10', 'lbp', 'hbf5', 'wvlt', 'HOS'],
-        reduced_DS=True,
-        leads_flag=[1, 0],
-    )    
-    """
+
+    trival_main(
+    multi_mode="ovr",
+    winL=90,
+    winR=90,
+    do_preprocess=False,
+    maxRR=False,
+    use_RR=False,
+    norm_RR=False,
+    compute_morph=['resample_10', 'lbp', 'hbf5', 'wvlt', 'HOS'],
+    reduced_DS=True,
+    leads_flag=[1, 0],
+    )
 
     main(
         multi_mode="ovr",
