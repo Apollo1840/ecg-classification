@@ -6,7 +6,7 @@ from ..load_MITBIH import *
 from ..constant import *
 
 
-class TestECGMethods(unittest.TestCase):
+class TestLoadMITDBMethods(unittest.TestCase):
 
     def setUp(self) -> None:
         pass

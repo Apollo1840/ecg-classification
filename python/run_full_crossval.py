@@ -9,7 +9,6 @@ Mondejar Guerra, Victor M.
 """
 from .train_SVM import *
 
-
 # Run the cross val for all the modules (RR, Wavlets, HOS)
 
 winL = 90
@@ -17,12 +16,12 @@ winR = 90
 do_preprocess = True
 use_weight_class = True
 multi_mode = 'ovo'
-#voting_strategy = 'ovo_voting'  # 'ovo_voting_exp', 'ovo_voting_both'
+# voting_strategy = 'ovo_voting'  # 'ovo_voting_exp', 'ovo_voting_both'
 
-oversamp_methods = {''} #,, 'SMOTE', 'SMOTEENN', 'SMOTETomek', 'ADASYN'
-feature_selections = {''}#, 'SFS', 'CFS', 'RS'
+oversamp_methods = {''}  # ,, 'SMOTE', 'SMOTEENN', 'SMOTETomek', 'ADASYN'
+feature_selections = {''}  # , 'SFS', 'CFS', 'RS'
 
-do_cross_val = 'pat_cv' # 'beat_cv' 
+do_cross_val = 'pat_cv'  # 'beat_cv'
 
 feature_selection = ''
 maxRR = True
@@ -30,13 +29,15 @@ maxRR = True
 pca_k = 0
 
 for oversamp_method in oversamp_methods:
-
     print("run_full_crossval.py: SVM ((RR) train with oversamp " + oversamp_method)
 
     use_RR = False
     norm_RR = False
-    compute_morph = {'wvlt'} # 'wvlt', 'HOS', 'myMorph'
-    main(multi_mode, 90, 90, do_preprocess, use_weight_class, maxRR, use_RR, norm_RR, compute_morph, oversamp_method, pca_k, feature_selection, do_cross_val)
+    compute_morph = {'wvlt'}  # 'wvlt', 'HOS', 'myMorph'
+    main(multi_mode,
+         90, 90,
+         do_preprocess, use_weight_class, maxRR, use_RR, norm_RR, compute_morph, oversamp_method,
+         pca_k, feature_selection, do_cross_val)
 
     """
     ####################################
@@ -50,7 +51,6 @@ for oversamp_method in oversamp_methods:
     feature_selection = ''
     main(multi_mode, 90, 90, do_preprocess, use_weight_class, maxRR, use_RR, norm_RR, compute_morph, oversamp_method, pca_k, feature_selection, do_cross_val)
     """
-
 
     """
     print("run_full_crossval.py: SVM ((RR) train with oversamp " + oversamp_method)
