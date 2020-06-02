@@ -27,11 +27,11 @@ def load_mit_db(
         DS,
         ws,
         do_preprocess,
+        is_reduce,
         maxRR,
         use_RR,
         norm_RR,
         compute_morph,
-        leads_flag,
         is_save=True,
 ):
     """
@@ -40,12 +40,12 @@ def load_mit_db(
     :param DS: Str, "DS1" or "DS2"
     :param ws: Tuple[int], (winL, winR), window size
     :param do_preprocess: Bool
+    :param is_reduce: Bool, use reduced DS or not
     :param maxRR: Bool
     :param use_RR: Bool
     :param norm_RR: Bool
     :param compute_morph: List[str] or Set[str],
         can be ['resample_10', 'raw', 'u-lbp', 'lbp', 'hbf5', 'wvlt', 'wvlt+pca', 'HOS', 'myMorph']
-    :param leads_flag: [MLII, V1] set the value to 0 or 1 to reference if that lead is used
     :param is_save: save loaded as pickle or not
     :return: features, labels, patient_num_beats
     """
@@ -66,11 +66,11 @@ def load_mit_db(
 
     # make one
     # if both lead is usable, then the DS is reduced
-    reduced_DS = True if leads_flag == [1, 1] else False
-    my_db = load_mitbih_db(DS, reduced_DS, ws=ws, do_preprocess=do_preprocess)
+    my_db = load_mitbih_db(DS, is_reduce, ws=ws, do_preprocess=do_preprocess)
 
     # DS for wvlt+pca
     # (winL, winR) for mymorph
+    leads_flag = [1, int(is_reduce)] # [MLII, V1] set the value to 0 or 1 to reference if that lead is used
     features = my_db.get_features(leads_flag, maxRR, use_RR, norm_RR, compute_morph, DS, ws)
     labels = my_db.get_labels()
     patient_num_beats = my_db.get_n_beats_per_record()

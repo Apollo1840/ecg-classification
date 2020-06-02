@@ -1,10 +1,24 @@
 import os
-from constant import DB_PATH
+from constant import DB_PATH, MEASURE_PATH
 
 
-def create_svm_model_name(model_svm_path, winL, winR, do_preprocess,
-                          maxRR, use_RR, norm_RR, compute_morph, use_weight_class, feature_selection,
-                          oversamp_method, leads_flag, reduced_DS, pca_k, delimiter="/", prepare=True, **kwargs):
+def create_svm_model_name(model_svm_path,
+                          winL,
+                          winR,
+                          do_preprocess,
+                          maxRR,
+                          use_RR,
+                          norm_RR,
+                          compute_morph,
+                          use_weight_class,
+                          feature_selection,
+                          oversamp_method,
+                          leads_flag,
+                          reduced_DS,
+                          pca_k,
+                          delimiter="/",
+                          prepare=True,
+                          **kwargs):
     """
 
     :param model_svm_path:
@@ -68,21 +82,21 @@ def create_svm_model_name(model_svm_path, winL, winR, do_preprocess,
     return model_svm_path
 
 
-def get_svm_model_path(multi_mode,
-                       winL, winR,
-                       do_preprocess,
-                       maxRR,
-                       use_RR, norm_RR,
-                       compute_morph,
-                       use_weight_class,
-                       feature_selection,
-                       oversamp_method,
-                       leads_flag,
-                       reduced_DS,
-                       pca_k,
-                       gamma_value,
-                       C_value,
-                       **kwargs):
+def path_to_model(multi_mode,
+                  winL, winR,
+                  do_preprocess,
+                  maxRR,
+                  use_RR, norm_RR,
+                  compute_morph,
+                  use_weight_class,
+                  feature_selection,
+                  oversamp_method,
+                  leads_flag,
+                  reduced_DS,
+                  pca_k,
+                  gamma_value,
+                  C_value,
+                  **kwargs):
     model_svm_path = DB_PATH + 'svm_models/' + multi_mode + '_rbf'
 
     model_svm_path = create_svm_model_name(model_svm_path,
@@ -104,6 +118,29 @@ def get_svm_model_path(multi_mode,
         model_svm_path = model_svm_path + '_C_' + str(C_value) + '.joblib.pkl'
 
     return model_svm_path
+
+
+def path_to_measure(multi_mode,
+                    winL,
+                    winR,
+                    do_preprocess,
+                    maxRR,
+                    use_RR,
+                    norm_RR,
+                    compute_morph,
+                    use_weight_class,
+                    feature_selection,
+                    oversamp_method,
+                    leads_flag,
+                    reduced_DS,
+                    pca_k,
+                    delimiter="_",
+                    prepare=True,
+                    **kwargs):
+
+    perf_measures_path = create_svm_model_name(model_svm_path=MEASURE_PATH + multi_mode, **locals())
+
+    return perf_measures_path
 
 
 def create_oversamp_name(reduced_DS, do_preprocess, compute_morph, winL, winR, maxRR, use_RR, norm_RR, pca_k):
