@@ -2,6 +2,7 @@ import unittest
 
 import os
 import numpy as np
+import matplotlib.pyplot as plt
 from ..load_MITBIH import *
 from ..constant import *
 
@@ -11,8 +12,8 @@ class TestLoadMITDBMethods(unittest.TestCase):
     def setUp(self) -> None:
         pass
 
-    def test_load_signal(self):
-        my_db = load_signal(record_ids=DS_bank["reduced"]["DS1"][:1], ws=(90, 90), do_preprocess=True)
+    def test_load_signals(self):
+        my_db = load_signals(record_ids=DS_bank["reduced"]["DS1"][:1], ws=(90, 90), do_preprocess=True)
         print(len(my_db.beat))  # len of records 1
         print(len(my_db.beat[0]))  # number of beats
         print(len(my_db.beat[0][0]))  # number of leads  2

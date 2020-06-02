@@ -20,19 +20,17 @@ import operator
 
 from mit_db import mit_db
 from constant import *
+from path_manager import name_ml_data, name_my_db
 
 
 def load_mit_db(
         DS,
-        winL,
-        winR,
+        ws,
         do_preprocess,
         maxRR,
         use_RR,
         norm_RR,
         compute_morph,
-        db_path,
-        reduced_DS,
         leads_flag,
         is_save=True,
 ):
@@ -40,71 +38,58 @@ def load_mit_db(
     Load the data with the configuration and features selected
 
     :param DS: Str, "DS1" or "DS2"
-    :param winL: int
-    :param winR: int
+    :param ws: Tuple[int], (winL, winR), window size
     :param do_preprocess: Bool
     :param maxRR: Bool
     :param use_RR: Bool
     :param norm_RR: Bool
     :param compute_morph: List[str] or Set[str],
         can be ['resample_10', 'raw', 'u-lbp', 'lbp', 'hbf5', 'wvlt', 'wvlt+pca', 'HOS', 'myMorph']
-    :param db_path: str
-    :param reduced_DS: Bool,
-            load DS1, DS2 patients division (Chazal) or reduced version,
-            i.e., only patients in common that contains both MLII and V1
     :param leads_flag: [MLII, V1] set the value to 0 or 1 to reference if that lead is used
     :param is_save: save loaded as pickle or not
     :return: features, labels, patient_num_beats
     """
 
+    params_for_naming = locals()
+
     # load directly
-    features_labels_name = name_ml_data(DS,
-                                        winL,
-                                        winR,
-                                        do_preprocess,
-                                        maxRR,
-                                        use_RR,
-                                        norm_RR,
-                                        compute_morph,
-                                        db_path,
-                                        reduced_DS,
-                                        leads_flag)
+    features_labels_name = name_ml_data(**params_for_naming)
 
     if os.path.isfile(features_labels_name):
         print("Loading pickle: " + features_labels_name + "...")
         with open(features_labels_name, 'rb') as f:
-            # disable garbage collector
-            gc.disable()  # this improve the required loading time!
+            # disable garbage collector, his improve the required loading time!
+            gc.disable()
             features, labels, patient_num_beats = pickle.load(f)
             gc.enable()
         return features, labels, patient_num_beats
 
     # make one
-    my_db = load_mitbih_db(DS, db_path, (winL, winR), reduced_DS, do_preprocess, False)
+    # if both lead is usable, then the DS is reduced
+    reduced_DS = True if leads_flag == [1, 1] else False
+    my_db = load_mitbih_db(DS, reduced_DS, ws=ws, do_preprocess=do_preprocess)
 
-    features = my_db.get_features(leads_flag, maxRR, use_RR, norm_RR, compute_morph, DS, winL, winR)
+    # DS for wvlt+pca
+    # (winL, winR) for mymorph
+    features = my_db.get_features(leads_flag, maxRR, use_RR, norm_RR, compute_morph, DS, ws)
     labels = my_db.get_labels()
     patient_num_beats = my_db.get_n_beats_per_record()
 
     # Set labels array!
     if is_save:
         print('writing pickle: ' + features_labels_name + '...')
-        if not os.path.exists(os.path.dirname(features_labels_name)):
-            os.makedirs(os.path.dirname(features_labels_name))
-
         with open(features_labels_name, 'wb') as f:
             pickle.dump([features, labels, patient_num_beats], f, 2)
 
     return features, labels, patient_num_beats
 
 
-def load_mitbih_db(DS, db_path, ws, is_reduce, do_preprocess=False, is_save=True):
+def load_mitbih_db(DS, is_reduce, ws, do_preprocess=False, is_save=True):
     """
 
     load mitbih db as my_db
 
     :param DS: Str, "DS1" or "DS2"
-    :param db_path: str
     :param ws: Tuple[int], (winL, winR), window size
     :param do_preprocess: Bool
     :param is_reduce: Bool
@@ -115,7 +100,7 @@ def load_mitbih_db(DS, db_path, ws, is_reduce, do_preprocess=False, is_save=True
     print("Loading MIT BIH arr (" + DS + ") ...")
 
     winL, winR = ws
-    mit_pickle_name = name_my_db(db_path, is_reduce, do_preprocess, winL, winR, DS)
+    mit_pickle_name = name_my_db(is_reduce, do_preprocess, winL, winR, DS)
 
     # If the data with that configuration has been already computed Load pickle
     if os.path.isfile(mit_pickle_name):
@@ -144,7 +129,7 @@ def make_mitbih_db(DS, db_path, ws, is_reduce, do_preprocess=False, is_save=True
     """
 
     bank_key = "reduced" if is_reduce else "normal"
-    my_db = load_signal(DS_bank[bank_key][DS], ws, do_preprocess)
+    my_db = load_signals(DS_bank[bank_key][DS], ws, do_preprocess)
 
     if is_save:
         print("Saving signal processed data ...")
@@ -157,87 +142,13 @@ def make_mitbih_db(DS, db_path, ws, is_reduce, do_preprocess=False, is_save=True
     return my_db
 
 
-def name_my_db(db_path, reduced_DS, do_preprocess, winL, winR, DS):
-    """
-
-    :param db_path:
-    :param reduced_DS:
-    :param do_preprocess:
-    :param winL:
-    :param winR:
-    :param DS:
-    :return: str
-    """
-
-    mit_pickle_name = db_path + 'python_mit'
-    if reduced_DS:
-        mit_pickle_name = mit_pickle_name + '_reduced_'
-
-    if do_preprocess:
-        mit_pickle_name = mit_pickle_name + '_rm_bsline'
-
-    mit_pickle_name = mit_pickle_name + '_wL_' + str(winL) + '_wR_' + str(winR)
-    mit_pickle_name = mit_pickle_name + '_' + DS + '.pkl'
-
-    return mit_pickle_name
-
-
-def name_ml_data(DS, winL, winR, do_preprocess, maxRR, use_RR, norm_RR,
-                 compute_morph, db_path, reduced_DS, leads_flag):
-    """
-
-
-    :param DS:
-    :param winL:
-    :param winR:
-    :param do_preprocess:
-    :param maxRR:
-    :param use_RR:
-    :param norm_RR:
-    :param compute_morph:
-    :param db_path: str
-    :param reduced_DS:
-    :param leads_flag:
-    :return: Str, eg. "..._v1.p"
-    """
-
-    features_labels_name = db_path + 'features/' + 'w_' + str(winL) + '_' + str(winR) + '_' + DS
-
-    if do_preprocess:
-        features_labels_name += '_rm_bsline'
-
-    if maxRR:
-        features_labels_name += '_maxRR'
-
-    if use_RR:
-        features_labels_name += '_RR'
-
-    if norm_RR:
-        features_labels_name += '_norm_RR'
-
-    for descp in compute_morph:
-        features_labels_name += '_' + descp
-
-    if reduced_DS:
-        features_labels_name += '_reduced'
-
-    if leads_flag[0] == 1:
-        features_labels_name += '_MLII'
-
-    if leads_flag[1] == 1:
-        features_labels_name += '_V1'
-
-    features_labels_name += '.pkl'
-
-    return features_labels_name
-
-
-def load_signal(record_ids, ws, do_preprocess=True):
+def load_signals(record_ids, ws, do_preprocess=True, verbose=False):
     """
 
     :param record_ids: List[int], record_ids
     :param ws: Tuple[int], (winL, winR), indicates the size of the window centred at R-peak at left and right side
     :param do_preprocess: Bool, indicates if preprocesing of remove baseline on signal is performed
+    :param verbose: Bool
     :return: mitdb object.
     """
 
@@ -256,39 +167,16 @@ def load_signal(record_ids, ws, do_preprocess=True):
     # for r, a in zip(fRecords, fAnnotations):
     # r stands for record_id
     for r in tqdm(range(0, len(fRecords))):
-
-        # print("Processing signal " + str(r) + " / " + str(len(fRecords)) + "...")
-
-        # 1. Read signal
-        filename = os.path.join(DATA_DIR, fRecords[r])
-        MLII, V1 = load_ecg_from_csv(filename)
-
-        list_raw_signal.append((MLII, V1))
-        # NOTE a copy must be created in order to preserve the original signal
-        # display_signal(MLII)
-
-        # 2. Preprocessing signal! (very time consuming)
-        if do_preprocess:
-            MLII = preprocess_sig(MLII)
-            V1 = preprocess_sig(V1)
-
-        # 3. Read annotations
-        filename = os.path.join(DATA_DIR, fAnnotations[r])
-        annotations = load_ann_from_txt(filename)
-
-        # Extract the R-peaks from annotations
-        beat_indices, labels, r_peaks, r_peaks_original, is_r_valid = parse_annotations(
-            annotations,
-            MLII,
-            ws,
-            size_rr_max=20)
-
-        list_beats[r] = [(MLII[beat_start: beat_end], V1[beat_start: beat_end])
-                         for beat_start, _, beat_end in beat_indices]
+        raw_signal, beats, labels, is_r_valid, r_peaks, r_peaks_original = load_signal_single(fRecords[r],
+                                                                                              fAnnotations[r],
+                                                                                              ws,
+                                                                                              do_preprocess,
+                                                                                              verbose)
+        list_beats[r] = beats
         list_class_id[r] = labels
-        list_is_r_valid[r] = np.array(is_r_valid)
-        list_r_peaks[r] = np.array(r_peaks)
-        list_r_peaks_original[r] = np.array(r_peaks_original)
+        list_is_r_valid[r] = is_r_valid
+        list_r_peaks[r] = r_peaks
+        list_r_peaks_original[r] = r_peaks_original
 
         # list_r_peaks[r] = list_r_peaks[r][(list_is_r_valid[r] == 1)]
         # list_r_peaks_original[r] = list_r_peaks_original[r][(list_is_r_valid[r] == 1)]
@@ -305,6 +193,45 @@ def load_signal(record_ids, ws, do_preprocess=True):
     my_db.orig_R_pos = list_r_peaks_original
 
     return my_db
+
+
+def load_signal_single(f_record, f_annotation, ws, do_preprocess, verbose=False):
+    """
+
+    :param f_record: str
+    :param f_annotation: str
+    :param ws: Tuple[int], (winL, winR)
+    :param do_preprocess: Bool
+    :param verbose: Bool
+    :return:
+    """
+
+    # print("Processing signal " + str(r) + " / " + str(len(fRecords)) + "...")
+
+    filename = os.path.join(DATA_DIR, f_record)
+    MLII, V1 = load_ecg_from_csv(filename)
+
+    raw_signal = (MLII, V1)
+
+    # 2. Preprocessing signal! (very time consuming)
+    if do_preprocess:
+        MLII = preprocess_sig(MLII, verbose)
+        V1 = preprocess_sig(V1, verbose)
+
+    # 3. Read annotations
+    filename = os.path.join(DATA_DIR, f_annotation)
+    annotations = load_ann_from_txt(filename)
+
+    # Extract the R-peaks from annotations
+    beat_indices, labels, r_peaks, r_peaks_original, is_r_valid = parse_annotations(
+        annotations,
+        MLII,
+        ws,
+        size_rr_max=20)
+
+    beats = [(MLII[beat_start: beat_end], V1[beat_start: beat_end]) for beat_start, _, beat_end in beat_indices]
+
+    return raw_signal, beats, labels, np.array(is_r_valid), np.array(r_peaks), np.array(r_peaks_original)
 
 
 def parse_data_dir(data_dir, record_ids):
@@ -467,7 +394,7 @@ def relocate_r_peak(r_pos, ref_signal, rr_max):
     return r_pos
 
 
-def preprocess_sig(signal, verbose=True):
+def preprocess_sig(signal, verbose=False):
     """
 
     :param signal: List[float]

@@ -1,6 +1,8 @@
 
 DATA_DIR = '/home/congyu/dataset/ECG/mitbih/csv/'
-MITBIH_CLASSES = ['N', 'L', 'R', 'e',    'j', 'A', 'a', 'J', 'S', 'V', 'E', 'F']  # , 'P', '/', 'f', 'u']
+DB_PATH = "/home/congyu/dataset/ECG/mitdb/ml_learning/"
+
+MITBIH_CLASSES = ['N', 'L', 'R', 'e', 'j', 'A', 'a', 'J', 'S', 'V', 'E', 'F']  # , 'P', '/', 'f', 'u']
 AAMI = {
     "N": ['N', 'L', 'R'],
     "SVEB": ['A', 'a', 'J', 'S', 'e', 'j'],
@@ -8,6 +10,9 @@ AAMI = {
     "F": ['F'],
     # "Q": ['P', '/', 'f', 'u'],
 }
+
+AAMI_CLASSES = sorted(AAMI.keys())
+# AAMI_CLASSES = ['F', 'N', 'SVEB', 'VEB']
 
 DS_bank = {
 
@@ -30,4 +35,3 @@ DS_bank = {
     }
 }
 
-AAMI_CLASSES = sorted(AAMI.keys())

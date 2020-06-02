@@ -41,7 +41,7 @@ class mit_db:
 
         self.n_record = len(self.class_ID)
 
-    def get_features(self, leads_flag, maxRR, use_RR, norm_RR, compute_morph, DS, winL, winR):
+    def get_features(self, leads_flag, maxRR, use_RR, norm_RR, compute_morph, DS, ws):
         """
 
         :param leads_flag: [MLII, V1] set the value to 0 or 1 to reference if that lead is used
@@ -51,8 +51,7 @@ class mit_db:
         :param compute_morph: List[str] or Set[str],
                 can be ['resample_10', 'raw', 'u-lbp', 'lbp', 'hbf5', 'wvlt', 'wvlt+pca', 'HOS', 'myMorph']
         :param DS: Str, "DS1" or "DS2"
-        :param winL: int
-        :param winR: int
+        :param ws: Tuple[int], window size: [winL, winR]
         :return:
         """
 
@@ -62,6 +61,7 @@ class mit_db:
         # prepare for use_RR and norm_RR, if it is needed
         RR = []
         if use_RR or norm_RR:
+            print("getting rr features ...")
             if maxRR:
                 r_poses = self.R_pos
             else:
@@ -148,7 +148,7 @@ class mit_db:
         # My morphological descriptor
         if 'myMorph' in compute_morph:
             print("My Descriptor ...")
-            features_temp = get_features_mymorph(self.beat, leads_flag, winL, winR)
+            features_temp = get_features_mymorph(self.beat, leads_flag, ws[0], ws[1])
             features = np.column_stack((features, features_temp)) if features.size else features_temp
 
         return features

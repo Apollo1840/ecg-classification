@@ -83,8 +83,13 @@ def run_cross_val_single(features, labels, patient_num_beats, division_mode, c_v
     if division_mode == 'pat_cv':
         k_folds_indices = cross_val_index_by_patient(patient_num_beats)
 
-    if division_mode == 'beat_cv':
+    elif division_mode == 'beat_cv':
         k_folds_indices = cross_val_index_by_beat(labels, k)
+
+    else:
+        print("You must specify which kind of crossval type you use in do_cross_val, "
+              "eg do_cross_val='pat_cv' or 'beat_cv'.")
+        return None
 
     ################
     # RUN CROSS VAL
@@ -94,8 +99,14 @@ def run_cross_val_single(features, labels, patient_num_beats, division_mode, c_v
 
         # 1) prepare data
         print("preparing data ...")
+        # print(k_folds_indices)
+
         indices_val = np.array(k_folds_indices[kk])
         indices_trn = np.array(flatten_list([k_folds_indices[i] for i in range(k) if i != kk]))
+        # not k_folds_indices[kk]
+
+        # no overlap between train and test
+        assert not any(np.isin(indices_val, indices_trn))
 
         tr_features = features[indices_trn]
         tr_labels = labels[indices_trn]
@@ -167,7 +178,7 @@ def cross_val_index_by_patient(patient_num_beats):
     base = 0
     indices = []
     for kk in range(k):
-        indices.append([range(base, base + patient_num_beats[kk]+1)])
+        indices.append(range(base, base + patient_num_beats[kk]))
         base = base + patient_num_beats[kk]
     return indices
 
