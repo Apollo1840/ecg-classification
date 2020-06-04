@@ -24,15 +24,15 @@ from path_manager import path_to_ml_data, path_to_my_db
 
 
 def load_mit_db(
-        DS,
+        DS: str,
         ws,
-        do_preprocess,
-        is_reduce,
-        maxRR,
-        use_RR,
-        norm_RR,
+        do_preprocess: bool,
+        is_reduce: bool,
+        maxRR: bool,
+        use_RR: bool,
+        norm_RR: bool,
         compute_morph,
-        is_save=True,
+        is_save: bool = True,
 ):
     """
     Load the data with the configuration and features selected
@@ -432,46 +432,37 @@ if __name__ == "__main__":
     # test level 0
     load_mit_db(
         DS="DS1",
-        winL=90,
-        winR=90,
+        ws=[90, 90],
         do_preprocess=False,
         maxRR=True,
         use_RR=False,
         norm_RR=False,
         compute_morph=[],
-        db_path="/home/congyu/dataset/ECG/cache/",
-        reduced_DS=True,
-        leads_flag=[1, 0],
+        is_reduce=True,
         is_save=False)
 
     # test level 1
     load_mit_db(
         DS="DS1",
-        winL=90,
-        winR=90,
+        ws=[90, 90],
         do_preprocess=False,
         maxRR=True,
         use_RR=True,
         norm_RR=True,
         compute_morph=[],
-        db_path="/home/congyu/dataset/ECG/cache/",
-        reduced_DS=True,
-        leads_flag=[1, 0],
+        is_reduce=True,
         is_save=False)
 
     # test level 2
     features, labels, _ = load_mit_db(
         DS="DS1",
-        winL=90,
-        winR=90,
+        ws=[90, 90],
         do_preprocess=False,
         maxRR=False,
         use_RR=False,
         norm_RR=False,
         compute_morph=['resample_10', 'lbp', 'hbf5', 'wvlt', 'HOS'],
-        db_path="/home/congyu/dataset/ECG/cache/",
-        reduced_DS=True,
-        leads_flag=[1, 0],
+        is_reduce=True,
         is_save=False)
 
     print(features.shape)

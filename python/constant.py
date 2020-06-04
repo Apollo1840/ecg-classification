@@ -36,3 +36,6 @@ DS_bank = {
     }
 }
 
+for bank_key in DS_bank:
+    DS_bank[bank_key]["DS12"] = DS_bank[bank_key]["DS1"] + DS_bank[bank_key]["DS2"]
+

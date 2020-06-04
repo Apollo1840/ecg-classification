@@ -14,18 +14,12 @@ Mondejar Guerra, Victor M.
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+from utils import PrintTime
 
 from features_ECG import (calc_RR_intervals,
                           get_features_resample, get_features_rr, get_featurs_hos, get_features_lbp,
                           get_features_raw, get_features_wvlt, get_features_hbf5, get_features_rr_norm,
                           get_features_u_lbp, get_features_mymorph, get_features_wvlt_pca)
-
-
-# Show a 2D plot with the data in beat
-def display_signal(beat):
-    plt.plot(beat)
-    plt.ylabel('Signal')
-    plt.show()
 
 
 class mit_db:
@@ -83,73 +77,62 @@ class mit_db:
         # Compute morphological features
 
         if 'raw' in compute_morph:
-            print("Raw ...")
-            start = time.time()
-
-            features_raw = get_features_raw(self.beat, leads_flag)
-            features = np.column_stack((features, features_raw)) if features.size else features_raw
-
-            end = time.time()
-            print("Time raw: " + str(format(end - start, '.2f')) + " sec")
+            with PrintTime("raw"):
+                features_raw = get_features_raw(self.beat, leads_flag)
+                features = np.column_stack((features, features_raw)) if features.size else features_raw
+                print(features.shape)
 
         if 'resample_10' in compute_morph:
-            print("Resample_10 ...")
-            start = time.time()
-
-            features_raw = get_features_resample(self.beat, leads_flag)
-            features = np.column_stack((features, features_raw)) if features.size else features_raw
-
-            end = time.time()
-            print("Time resample: " + str(format(end - start, '.2f')) + " sec")
+            with PrintTime("resample_10"):
+                features_raw = get_features_resample(self.beat, leads_flag)
+                features = np.column_stack((features, features_raw)) if features.size else features_raw
+                print(features.shape)
 
         if 'u-lbp' in compute_morph:
-            print("u-lbp ...")
-
-            features_u_lbp = get_features_u_lbp(self.beat, leads_flag)
-            features = np.column_stack((features, features_u_lbp)) if features.size else features_u_lbp
-
-            print(features.shape)
+            with PrintTime("u-lbp"):
+                features_u_lbp = get_features_u_lbp(self.beat, leads_flag)
+                features = np.column_stack((features, features_u_lbp)) if features.size else features_u_lbp
+                print(features.shape)
 
         if 'lbp' in compute_morph:
-            print("lbp ...")
-
-            features_lbp = get_features_lbp(self.beat, leads_flag)
-            features = np.column_stack((features, features_lbp)) if features.size else features_lbp
-
-            print(features.shape)
+            with PrintTime("lbp"):
+                features_lbp = get_features_lbp(self.beat, leads_flag)
+                features = np.column_stack((features, features_lbp)) if features.size else features_lbp
+                print(features.shape)
 
         if 'hbf5' in compute_morph:
-            print("hbf ...")
-
-            features_temp = get_features_hbf5(self.beat, leads_flag)
-            features = np.column_stack((features, features_temp)) if features.size else features_temp
-
-            print(features.shape)
+            with PrintTime("hbf5"):
+                features_temp = get_features_hbf5(self.beat, leads_flag)
+                features = np.column_stack((features, features_temp)) if features.size else features_temp
+                print(features.shape)
 
         # Wavelets
         if 'wvlt' in compute_morph:
-            print("Wavelets ...")
-
-            features_temp = get_features_wvlt(self.beat, leads_flag)
-            features = np.column_stack((features, features_temp)) if features.size else features_temp
+            with PrintTime("wvlt"):
+                features_temp = get_features_wvlt(self.beat, leads_flag)
+                features = np.column_stack((features, features_temp)) if features.size else features_temp
+                print(features.shape)
 
         # Wavelets
         if 'wvlt+pca' in compute_morph:
-            features_temp = get_features_wvlt_pca(self.beat, leads_flag, DS, family="db1", level=3, pca_k=7)
-            features = np.column_stack((features, features_temp)) if features.size else features_temp
+            with PrintTime("wvlt+pca"):
+                features_temp = get_features_wvlt_pca(self.beat, leads_flag, DS, family="db1", level=3, pca_k=7)
+                features = np.column_stack((features, features_temp)) if features.size else features_temp
+                print(features.shape)
 
         # HOS
         if 'HOS' in compute_morph:
-            print("HOS ...")
-            features_temp = get_featurs_hos(self.beat, leads_flag)
-            features = np.column_stack((features, features_temp)) if features.size else features_temp
-            print(features.shape)
+            with PrintTime("HOS"):
+                features_temp = get_featurs_hos(self.beat, leads_flag)
+                features = np.column_stack((features, features_temp)) if features.size else features_temp
+                print(features.shape)
 
         # My morphological descriptor
         if 'myMorph' in compute_morph:
-            print("My Descriptor ...")
-            features_temp = get_features_mymorph(self.beat, leads_flag, ws[0], ws[1])
-            features = np.column_stack((features, features_temp)) if features.size else features_temp
+            with PrintTime("myMorph"):
+                features_temp = get_features_mymorph(self.beat, leads_flag, ws[0], ws[1])
+                features = np.column_stack((features, features_temp)) if features.size else features_temp
+                print(features.shape)
 
         return features
 
@@ -161,3 +144,6 @@ class mit_db:
         for p in range(len(self.beat)):
             patient_num_beats = np.append(patient_num_beats, len(self.beat[p]))
         return patient_num_beats
+
+
+
