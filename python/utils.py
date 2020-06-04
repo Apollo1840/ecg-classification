@@ -3,13 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-# Show a 2D plot with the data in beat
-def display_signal(beat):
-    plt.plot(beat)
-    plt.ylabel('Signal')
-    plt.show()
-
-
 def calc_class_weights(labels):
     class_weights = {}
     for c in range(max(labels)+1):

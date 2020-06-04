@@ -1,5 +1,5 @@
 import os
-from constant import DB_PATH, MEASURE_PATH
+from config import DB_PATH, MEASURE_PATH
 
 
 def create_svm_model_name(somename,
@@ -17,7 +17,6 @@ def create_svm_model_name(somename,
                           reduced_DS,
                           pca_k,
                           delimiter="/",
-                          prepare=True,
                           **kwargs):
     """
     mark the name with all the hyperparameters, joined by delimiter.
@@ -76,10 +75,6 @@ def create_svm_model_name(somename,
 
     if pca_k > 0:
         somename = somename + delimiter + 'pca_' + str(pca_k)
-
-    if prepare:
-        if not os.path.exists(somename):
-            os.makedirs(somename)
 
     return somename
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import numpy as np
-from evaluation_AAMI import *
+from model_evaluation import *
 from sklearn import svm
 import time
 

@@ -60,13 +60,20 @@ def compute_cohen_kappa(confusion_matrix):
 # Compute the performance measures following the AAMI recommendations.
 # Using sensivity (recall), specificity (precision) and accuracy 
 # for each class: (N, SVEB, VEB, F)
-def compute_AAMI_performance_measures(predictions, gt_labels):
+def compute_AAMI_performance_measures(predictions, gt_labels, verbose=False):
+
+    if verbose:
+        print("computing AAMI performance ...")
+
     n_classes = 4  # 5
     pf_ms = performance_measures(n_classes)
 
     # TODO If conf_mat no llega a clases 4 por gt_labels o predictions...
     # hacer algo para que no falle el codigo...
     # NOTE: added labels=[0,1,2,3])...
+
+    if verbose:
+        print("computing AAMI performance ... (confusion matrix)")
 
     # Confussion matrix
     conf_mat = metrics.confusion_matrix(gt_labels, predictions, labels=[0, 1, 2, 3])
@@ -98,6 +105,9 @@ def compute_AAMI_performance_measures(predictions, gt_labels):
             pf_ms.F_measure[i] = 0.0
         else:
             pf_ms.F_measure[i] = 2 * (pf_ms.Precision[i] * pf_ms.Recall[i]) / (pf_ms.Precision[i] + pf_ms.Recall[i])
+
+    if verbose:
+        print("computing AAMI performance ... (cohen_kappa)")
 
     # Compute Cohen's Kappa
     pf_ms.kappa, prob_obsv, prob_expect = compute_cohen_kappa(conf_mat)

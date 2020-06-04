@@ -16,10 +16,10 @@ import numpy as np
 import time
 from utils import PrintTime
 
-from features_ECG import (calc_RR_intervals,
-                          get_features_resample, get_features_rr, get_featurs_hos, get_features_lbp,
-                          get_features_raw, get_features_wvlt, get_features_hbf5, get_features_rr_norm,
-                          get_features_u_lbp, get_features_mymorph, get_features_wvlt_pca)
+from feature_extraction import (calc_RR_intervals,
+                                get_features_resample, get_features_rr, get_featurs_hos, get_features_lbp,
+                                get_features_raw, get_features_wvlt, get_features_hbf5, get_features_rr_norm,
+                                get_features_u_lbp, get_features_mymorph, get_features_wvlt_pca)
 
 
 class mit_db:
@@ -144,6 +144,3 @@ class mit_db:
         for p in range(len(self.beat)):
             patient_num_beats = np.append(patient_num_beats, len(self.beat[p]))
         return patient_num_beats
-
-
-

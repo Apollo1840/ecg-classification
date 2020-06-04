@@ -16,9 +16,9 @@ from sklearn.model_selection import train_test_split
 from sklearn import svm
 from pprint import pprint
 
-from path_manager import path_to_model, path_to_measure
-from load_MITBIH import load_mit_db
-from aggregation_voting_strategies import *
+from util_path_manager import path_to_model, path_to_measure
+from data_load import load_mit_db
+from model_aggregation import *
 from utils import PrintTime, calc_class_weights
 
 
@@ -35,7 +35,7 @@ def train_and_evaluation(
         oversamp_method='',
         pca_k=0,
         feature_selection=False,
-        do_cross_val=False,
+        cross_patient=False,
         c_value=0.001,
         gamma_value=0.0,
         reduced_DS=False,
@@ -59,7 +59,7 @@ def train_and_evaluation(
     :param oversamp_method:
     :param pca_k: int, if it is larger than 0, PCA will be activated
     :param feature_selection: Bool,
-    :param do_cross_val: Str, 'pat_cv' or 'beat_cv'
+    :param cross_patient: Bool
     :param c_value:
     :param gamma_value:
     :param reduced_DS: Bool,
@@ -83,6 +83,7 @@ def train_and_evaluation(
                                                                       use_RR,
                                                                       norm_RR,
                                                                       compute_morph,
+                                                                      cross_patient=cross_patient,
                                                                       verbose=verbose)
 
     # 2. train the model
@@ -113,6 +114,8 @@ def train_and_evaluation(
 
     print("congrats! evaluation complete! ")
 
+    return svm_model, eval_features, eval_labels
+
 
 def load_ml_data(ws,
                  data_do_preprocess,
@@ -124,6 +127,7 @@ def load_ml_data(ws,
                  is_normalize=True,
                  cross_patient=True,
                  verbose=False):
+
     if cross_patient:
         # Load train data
         # tr_ means train_
@@ -251,6 +255,7 @@ def eval_model_module(perf_measures_path,
                       gamma_value,
                       is_include_train=False,
                       is_include_ovo_voting_exp=False,
+                      verbose=False,
                       **kwargs
                       ):
     # ovo_voting:
@@ -264,6 +269,7 @@ def eval_model_module(perf_measures_path,
                perf_measures_path,
                c_value,
                gamma_value,
+               verbose=verbose,
                DS='')
 
     # Simply add 1 to the win class
@@ -277,6 +283,7 @@ def eval_model_module(perf_measures_path,
                    perf_measures_path,
                    c_value,
                    gamma_value,
+                   verbose=verbose,
                    DS='Train_')
 
     # ovo_voting_exp:
@@ -292,6 +299,7 @@ def eval_model_module(perf_measures_path,
                    perf_measures_path,
                    c_value,
                    gamma_value,
+                   verbose=verbose,
                    DS='')
 
         if is_include_train:
@@ -304,6 +312,7 @@ def eval_model_module(perf_measures_path,
                        perf_measures_path,
                        c_value,
                        gamma_value,
+                       verbose=verbose,
                        DS='Train_')
 
 
@@ -340,7 +349,7 @@ def eval_model(svm_model, features, labels, multi_mode, voting_strategy,
         os.makedirs(output_path)
 
     # svm_model.predict_log_proba  svm_model.predict_proba   svm_model.predict ...
-    perf_measures = compute_AAMI_performance_measures(predict, labels)
+    perf_measures = compute_AAMI_performance_measures(predict, labels, verbose=verbose)
     pprint(perf_measures.__dict__, indent=2)
 
     # save results

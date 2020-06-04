@@ -15,12 +15,13 @@ from tqdm import tqdm
 import pickle
 import gc
 import numpy as np
-from scipy.signal import medfilt
+
 import operator
 
-from mit_db import mit_db
-from constant import *
-from path_manager import path_to_ml_data, path_to_my_db
+from data_base import mit_db
+from config import *
+from utils_ecg import *
+from util_path_manager import path_to_ml_data, path_to_my_db
 
 
 def load_mit_db(
@@ -223,13 +224,15 @@ def load_signal_single(f_record, f_annotation, ws, do_preprocess, verbose=False)
     annotations = load_ann_from_txt(filename)
 
     # Extract the R-peaks from annotations
-    beat_indices, labels, r_peaks, r_peaks_original, is_r_valid = parse_annotations(
+    beat_indices, labels, r_peaks_original, is_r_valid = parse_annotations(
         annotations,
         MLII,
         ws,
         size_rr_max=20)
 
+    r_peaks = [r_pos for _, r_pos, _ in beat_indices]
     beats = [(MLII[beat_start: beat_end], V1[beat_start: beat_end]) for beat_start, _, beat_end in beat_indices]
+    labels = [AAMI_CLASSES.index(label) for label in labels]
 
     return raw_signal, beats, labels, np.array(is_r_valid), np.array(r_peaks), np.array(r_peaks_original)
 
@@ -264,6 +267,7 @@ def parse_data_dir(data_dir, record_ids):
 
 def load_ecg_from_csv(filename):
     """
+    todo: load ecg from record id.
 
     :param filename: str
     :return:
@@ -301,131 +305,12 @@ def load_ann_from_txt(filename):
         next(f)  # skip first line!
         annotations = []
         for line in f:
-            annotations.append(line)
+            _, r_pos, beat_label = line.split()[:3]
+
+            if len(beat_label) == 1:
+                annotations.append((int(r_pos), beat_label))
+
     return annotations
-
-
-def parse_annotations(annotations, ref_sig, ws=(90, 90), size_rr_max=20):
-    """
-
-    :param annotations: List[str], the str.split()[1] is r_pos, str.split()[2] is beat_label in mitbih format
-    :param ref_sig: reference_signal
-    :param ws:
-    :param size_rr_max:
-    :return:
-        beat_indices, List[Tuple], Tuple is (beat_start_index, r_peak_index, beat_end_index).
-        labels, List[int],
-    """
-
-    beat_indices = []
-    labels = []
-    r_peaks = []
-    r_peaks_original = []
-    is_r_valid = []
-
-    for a in annotations:
-        _, r_pos, beat_label = a.split()[:3]
-
-        # todo: varify r_pos and beat_label
-
-        beat_index, label = parse_beats(int(r_pos), beat_label, ref_sig, ws, rr_max=size_rr_max)
-
-        if label:
-            labels.append(AAMI_CLASSES.index(label))
-            beat_indices.append(beat_index)
-
-            is_r_valid.append(1)
-        else:
-            is_r_valid.append(0)
-
-        r_peaks_original.append(int(r_pos))
-        r_peaks.append(beat_index[1])  # r_pos might be changed after parse_beats
-
-    # definitly:
-    # assert len(r_peaks) == len(r_peaks_original) == len(is_r_valid)
-
-    return beat_indices, labels, r_peaks, r_peaks_original, is_r_valid
-
-
-def parse_beats(r_pos, beat_type, ref_sig, ref_ws, is_relocate=True, rr_max=20):
-    """
-    relocate r_peak, get beat index and AAMI class
-
-    :param r_pos: int, r-peak index
-    :param beat_type: str, mitbih label.
-    :param ref_sig: List[float], reference_signal
-    :param ref_ws: Tuple[int], (winL, winR), reference window size
-    :param is_relocate: Bool
-    :param rr_max: int, related to sample rate
-    :return: Tuple, str, str is AAMI label.
-    """
-
-    beatL = None
-    beatR = None
-    class_AAMI = None
-
-    winL, winR = ref_ws
-
-    if is_relocate:
-        r_pos = relocate_r_peak(r_pos, ref_sig, rr_max)
-
-    if winL < r_pos < (len(ref_sig) - winR) and beat_type in MITBIH_CLASSES:
-        beatL = r_pos - winL
-        beatR = r_pos + winR
-        class_AAMI = mitbih2aami(beat_type)
-
-    return (beatL, r_pos, beatR), class_AAMI
-
-
-def relocate_r_peak(r_pos, ref_signal, rr_max):
-    """
-
-    :param r_pos: int, r_peak index
-    :param ref_signal: List[float], reference signal
-    :param rr_max: int,
-    :return:
-    """
-
-    # relocate r_peak by searching maximum in ref_signal
-    # r_pos between [size_RR_max, len(MLII) - size_RR_max]
-    if rr_max < r_pos < len(ref_signal) - rr_max:
-        index, value = max(enumerate(ref_signal[r_pos - rr_max: r_pos + rr_max]), key=operator.itemgetter(1))
-        return (r_pos - rr_max) + index
-    return r_pos
-
-
-def preprocess_sig(signal, verbose=False):
-    """
-
-    :param signal: List[float]
-    :param verbose: Bool
-    :return: List[float]
-    """
-    if verbose:
-        print("filtering the signal ...")
-
-    baseline = medfilt(signal, 71)
-    baseline = medfilt(baseline, 215)
-
-    # Remove Baseline
-    for i in range(0, len(signal)):
-        signal[i] = signal[i] - baseline[i]
-
-    # TODO Remove High Freqs
-    return signal
-
-
-def mitbih2aami(label):
-    """
-    
-    :param label: str 
-    :return: str 
-    """
-
-    for aami_label, mitbih_label in AAMI.items():
-        if label in mitbih_label:
-            return aami_label
-    return None
 
 
 if __name__ == "__main__":
