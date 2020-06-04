@@ -1,4 +1,5 @@
 import time
+import numpy as np
 import matplotlib.pyplot as plt
 
 
@@ -9,11 +10,15 @@ def display_signal(beat):
     plt.show()
 
 
-def calc_classes_weights(labels):
+def calc_class_weights(labels):
     class_weights = {}
-    for c in range(4):
+    for c in range(max(labels)+1):
         class_weights.update({c: len(labels) / float(np.count_nonzero(labels == c))})
     return class_weights
+
+
+def flatten_list(a_list):
+    return [item for sublist in a_list for item in sublist]
 
 
 class PrintTime:

@@ -1,39 +1,12 @@
 #!/usr/bin/env python
 
-"""
-train_SVM.py
-    
-VARPA, University of Coruna
-Mondejar Guerra, Victor M.
-15 Dec 2017
-"""
-
 import numpy as np
 import random
 from sklearn import svm
 
 from evaluation_AAMI import *
-from aggregation_voting_strategies import *
-
-
-# Eval the SVM model and export the results
-def eval_crossval_fold(svm_model, features, labels, multi_mode, voting_strategy):
-    if multi_mode == 'ovo':
-        decision_ovo = svm_model.decision_function(features)
-
-        if voting_strategy == 'ovo_voting':
-            predict_ovo, counter = ovo_voting(decision_ovo, 4)
-
-        elif voting_strategy == 'ovo_voting_both':
-            predict_ovo, counter = ovo_voting_both(decision_ovo, 4)
-
-        elif voting_strategy == 'ovo_voting_exp':
-            predict_ovo, counter = ovo_voting_exp(decision_ovo, 4)
-
-        # svm_model.predict_log_proba  svm_model.predict_proba   svm_model.predict ...
-        perf_measures = compute_AAMI_performance_measures(predict_ovo, labels)
-
-    return perf_measures
+from aggregation_voting_strategies import ovo_voting_handler
+from utils import *
 
 
 def run_cross_val(features, labels, patient_num_beats, division_mode, k):
@@ -169,6 +142,20 @@ def run_cross_val_single(features, labels, patient_num_beats, division_mode, c_v
     return cv_score
 
 
+# Eval the SVM model and export the results
+def eval_crossval_fold(svm_model, features, labels, multi_mode, voting_strategy):
+    if multi_mode == 'ovo':
+        decision_ovo = svm_model.decision_function(features)
+        predict_ovo, _ = ovo_voting_handler(decision_ovo, 4, voting_strategy)
+
+        # svm_model.predict_log_proba  svm_model.predict_proba   svm_model.predict ...
+        perf_measures = compute_AAMI_performance_measures(predict_ovo, labels)
+    else:
+        return None
+
+    return perf_measures
+
+
 # todo: test this func
 def cross_val_index_by_patient(patient_num_beats):
     # NOTE: division by patient and oversampling couldnt used at the same time!!!!
@@ -206,12 +193,4 @@ def cross_val_index_by_beat(labels, k, shuffle=True):
     return indices
 
 
-def calc_class_weights(tr_labels):
-    class_weights = {}
-    for c in range(max(tr_labels)+1):
-        class_weights.update({c: len(tr_labels) / float(np.count_nonzero(tr_labels == c))})
-    return class_weights
 
-
-def flatten_list(a_list):
-    return [item for sublist in a_list for item in sublist]

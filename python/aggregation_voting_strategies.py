@@ -1,21 +1,22 @@
 #!/usr/bin/env python
 
-"""
-aggregation_voting_strategies.py
-
-Description:
-Contains the methods for combining the decisions given by 
-multiclass SVM models: OvO and OvR 
-
-VARPA, University of Coruna
-Mondejar Guerra, Victor M.
-13 Nov 2017
-"""
-
 import numpy as np
 from evaluation_AAMI import *
 from sklearn import svm
 import time
+
+
+def ovo_voting_handler(decision, n_classes, voting_strategy):
+    if voting_strategy == 'ovo_voting':
+        predict, counter = ovo_voting(decision, n_classes)
+
+    elif voting_strategy == 'ovo_voting_both':
+        predict, counter = ovo_voting_both(decision, n_classes)
+
+    else:  # elif voting_strategy == 'ovo_voting_exp':
+        predict, counter = ovo_voting_exp(decision, n_classes)
+
+    return predict, counter
 
 
 # NOTE: use direct decision values or transform to range (0,1) with

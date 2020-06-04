@@ -10,6 +10,16 @@ import numpy as np
 # https://machinelearningmastery.com/feature-selection-machine-learning-python/
 
 def run_feature_selection(features, labels, feature_selection, best_features):
+    """
+
+
+    :param features:
+    :param labels:
+    :param feature_selection: str,  'select_K_Best' or 'LassoCV' or 'slct_percentile'
+    :param best_features:
+    :return:
+    """
+
     if feature_selection == 'select_K_Best':
         # feature extraction
         selector = SelectKBest(score_func=f_classif, k=4)  # score_func=chi2 : only for non-negative features
