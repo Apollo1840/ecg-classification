@@ -20,7 +20,7 @@ import operator
 
 from mit_db import mit_db
 from constant import *
-from path_manager import name_ml_data, name_my_db
+from path_manager import path_to_ml_data, path_to_my_db
 
 
 def load_mit_db(
@@ -53,7 +53,7 @@ def load_mit_db(
     params_for_naming = locals()
 
     # load directly
-    features_labels_name = name_ml_data(**params_for_naming)
+    features_labels_name = path_to_ml_data(**params_for_naming)
 
     if os.path.isfile(features_labels_name):
         print("Loading pickle: " + features_labels_name + "...")
@@ -70,7 +70,7 @@ def load_mit_db(
 
     # DS for wvlt+pca
     # (winL, winR) for mymorph
-    leads_flag = [1, int(is_reduce)] # [MLII, V1] set the value to 0 or 1 to reference if that lead is used
+    leads_flag = [1, int(is_reduce)]  # [MLII, V1] set the value to 0 or 1 to reference if that lead is used
     features = my_db.get_features(leads_flag, maxRR, use_RR, norm_RR, compute_morph, DS, ws)
     labels = my_db.get_labels()
     patient_num_beats = my_db.get_n_beats_per_record()
@@ -100,7 +100,7 @@ def load_mitbih_db(DS, is_reduce, ws, do_preprocess=False, is_save=True):
     print("Loading MIT BIH arr (" + DS + ") ...")
 
     winL, winR = ws
-    mit_pickle_name = name_my_db(is_reduce, do_preprocess, winL, winR, DS)
+    mit_pickle_name = path_to_my_db(is_reduce, do_preprocess, winL, winR, DS)
 
     # If the data with that configuration has been already computed Load pickle
     if os.path.isfile(mit_pickle_name):

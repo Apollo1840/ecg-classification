@@ -13,7 +13,8 @@ import sklearn
 import joblib
 from sklearn.preprocessing import StandardScaler
 from sklearn import svm
-
+import json
+from pprint import pprint
 from sklearn import decomposition
 
 from load_MITBIH import load_mit_db
@@ -40,7 +41,7 @@ def trival_main(
         pca_k=0,
         feature_selection=False,
         do_cross_val=False,
-        C_value=0.001,
+        c_value=0.001,
         gamma_value=0.0,
         reduced_DS=False,
         leads_flag=[1, 0],
@@ -76,29 +77,32 @@ def trival_main(
 
     params_for_naming = locals()
 
+    # 1. Load data
     if verbose:
         print("loading the data ...")
 
-    tr_features, tr_labels, eval_features_scaled, eval_labels = load_ml_data((winL, winR),
-                                                                             do_preprocess,
-                                                                             reduced_DS,
-                                                                             maxRR,
-                                                                             use_RR,
-                                                                             norm_RR,
-                                                                             compute_morph,
-                                                                             verbose=verbose)
+    tr_features, tr_labels, eval_features, eval_labels = load_ml_data((winL, winR),
+                                                                      do_preprocess,
+                                                                      reduced_DS,
+                                                                      maxRR,
+                                                                      use_RR,
+                                                                      norm_RR,
+                                                                      compute_morph,
+                                                                      verbose=verbose)
 
+    # 2. train the model
     if verbose:
         print("Ready to train the model on MIT-BIH DS1: ...")
 
     model_kwargs = {
-        "c_value": C_value,
+        "c_value": c_value,
         "gamma_value": gamma_value,
         "multi_mode": multi_mode,
     }
     model_svm_path = path_to_model(**params_for_naming)
     svm_model = train_model_module(model_svm_path, tr_features, tr_labels, **model_kwargs, verbose=verbose)
 
+    # 3. evaluate the model
     if verbose:
         print("Testing model on MIT-BIH DS2: " + model_svm_path + "...")
 
@@ -107,7 +111,7 @@ def trival_main(
                       svm_model,
                       tr_features,
                       tr_labels,
-                      eval_features_scaled,
+                      eval_features,
                       eval_labels,
                       **model_kwargs,
                       verbose=verbose)
@@ -154,20 +158,23 @@ def load_ml_data(ws,
 
     # todo: store the scaler
 
+    # input shape is the same
+    assert tr_features_scaled.shape[1:] == eval_features_scaled.shape[1:]
+
     return tr_features_scaled, tr_labels, eval_features_scaled, eval_labels
 
 
-def train_model_module(model_svm_path, tr_features_scaled, tr_labels, verbose=False, **model_kwargs):
+def train_model_module(model_svm_path, tr_features, tr_labels, verbose=False, **model_kwargs):
     if os.path.isfile(model_svm_path):
         # Load the trained model!
         svm_model = joblib.load(model_svm_path)
 
     else:
-        svm_model = train_model(model_svm_path, tr_features_scaled, tr_labels, **model_kwargs, verbose=verbose)
+        svm_model = train_model(model_svm_path, tr_features, tr_labels, **model_kwargs, verbose=verbose)
     return svm_model
 
 
-def train_model(model_svm_path, tr_features_scaled, tr_labels, verbose=False, **model_kwargs):
+def train_model(model_svm_path, tr_features, tr_labels, verbose=False, **model_kwargs):
     C_value = model_kwargs.get("c_value", 1)
     gamma_value = model_kwargs.get("gamma_value", 0)
     multi_mode = model_kwargs.get("multi_model", "ovr")
@@ -193,10 +200,10 @@ def train_model(model_svm_path, tr_features_scaled, tr_labels, verbose=False, **
 
     # Let's Train!
     if verbose:
-        print("Training the model ! ...")
+        print("Training the model with training data shape as {}! ...".format(tr_features.shape))
 
     start = time.time()
-    svm_model.fit(tr_features_scaled, tr_labels)
+    svm_model.fit(tr_features, tr_labels)
     end = time.time()
 
     # TODO assert that the class_ID appears with the desired order,
@@ -218,36 +225,42 @@ def train_model(model_svm_path, tr_features_scaled, tr_labels, verbose=False, **
 
 def eval_model_module(perf_measures_path,
                       svm_model,
-                      tr_features_scaled,
+                      tr_features,
                       tr_labels,
-                      eval_features_scaled,
+                      eval_features,
                       eval_labels,
                       multi_mode,
-                      C_value,
+                      c_value,
                       gamma_value,
-                      is_include_train=True,
-                      is_include_ovo_voting_exp=True,
+                      is_include_train=False,
+                      is_include_ovo_voting_exp=False,
                       **kwargs
                       ):
     # ovo_voting:
     # Let's test new data!
     print("Evaluation on DS2 ...")
     eval_model(svm_model,
-               eval_features_scaled,
+               eval_features,
                eval_labels,
                multi_mode,
-               'ovo_voting', perf_measures_path, C_value,
-               gamma_value, '')
+               'ovo_voting',
+               perf_measures_path,
+               c_value,
+               gamma_value,
+               DS='')
 
     # Simply add 1 to the win class
     if is_include_train:
         print("Evaluation on DS1 ...")
         eval_model(svm_model,
-                   tr_features_scaled,
+                   tr_features,
                    tr_labels,
                    multi_mode,
-                   'ovo_voting', perf_measures_path, C_value,
-                   gamma_value, 'Train_')
+                   'ovo_voting',
+                   perf_measures_path,
+                   c_value,
+                   gamma_value,
+                   DS='Train_')
 
     # ovo_voting_exp:
     # Consider the post prob adding to both classes
@@ -255,24 +268,44 @@ def eval_model_module(perf_measures_path,
         # Let's test new data!
         print("Evaluation on DS2 ...")
         eval_model(svm_model,
-                   eval_features_scaled,
+                   eval_features,
                    eval_labels,
                    multi_mode,
-                   'ovo_voting_exp', perf_measures_path,
-                   C_value, gamma_value, '')
+                   'ovo_voting_exp',
+                   perf_measures_path,
+                   c_value,
+                   gamma_value,
+                   DS='')
 
         if is_include_train:
             print("Evaluation on DS1 ...")
             eval_model(svm_model,
-                       tr_features_scaled,
+                       tr_features,
                        tr_labels,
                        multi_mode,
-                       'ovo_voting_exp', perf_measures_path, C_value,
-                       gamma_value, 'Train_')
+                       'ovo_voting_exp',
+                       perf_measures_path,
+                       c_value,
+                       gamma_value,
+                       DS='Train_')
 
 
 # Eval the SVM model and export the results
 def eval_model(svm_model, features, labels, multi_mode, voting_strategy, output_path, C_value, gamma_value, DS):
+    """
+
+    :param svm_model:
+    :param features:
+    :param labels:
+    :param multi_mode:
+    :param voting_strategy:
+    :param output_path:
+    :param C_value:
+    :param gamma_value:
+    :param DS: Str, "" or "Train_", basically used as a marker in path name.
+    :return:
+    """
+
     if multi_mode == 'ovo':
         eval_model_ovo(svm_model, features, labels, voting_strategy, output_path, C_value, gamma_value, DS)
 
@@ -296,7 +329,6 @@ def eval_model_ovo(svm_model, features, labels, voting_strategy, output_path, C_
 
     # svm_model.predict_log_proba  svm_model.predict_proba   svm_model.predict ...
     perf_measures = compute_AAMI_performance_measures(predict_ovo, labels)
-
     write_AAAMI_results_gamma(output_path, gamma_value, perf_measures, C_value, voting_strategy, DS)
 
     # save decision and predict
@@ -328,14 +360,13 @@ def eval_model_ovr(svm_model, features, labels, voting_strategy, output_path, C_
     write_AAAMI_results_gamma(output_path, gamma_value, perf_measures, C_value, voting_strategy, DS)
 
     # save decision and predict
-    np.savetxt(output_path + '/' + DS + 'C_' + str(C_value) + '_decision_ovr.csv',
-               decision_ovr)
+    np.savetxt(output_path + '/' + DS + 'C_' + str(C_value) + '_decision_ovr.csv', decision_ovr)
     np.savetxt(output_path + '/' + DS + 'C_' + str(C_value) + '_predict_' + voting_strategy + '.csv',
                predict_ovr.astype(int), '%.0f')
 
 
 def write_AAAMI_results_gamma(output_path, gamma_value, perf_measures, C_value, voting_strategy, DS):
-    print(perf_measures.__dict__)
+    pprint(perf_measures.__dict__, indent=2)
 
     # Write results and also predictions on DS2
     if not os.path.exists(output_path):
