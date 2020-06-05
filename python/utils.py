@@ -1,6 +1,9 @@
 import time
+import os
+import pickle
 import numpy as np
 import matplotlib.pyplot as plt
+import gc
 
 
 def calc_class_weights(labels):
@@ -43,3 +46,34 @@ class PrintTime:
         if self.verbose:
             self.end = time.time()
             print("time for {}: {} sec\n".format(self.name, format(self.end - self.start, '.2f')))
+
+
+def load_pkl_from_storage(path_func, verbose=True):
+    def dfunc(make_func):
+        def wfunc(*args, **kwargs):
+            data_path = path_func(*args, **kwargs)
+
+            if os.path.isfile(data_path):
+
+                if verbose:
+                    print("load {} data from {}".format(make_func.__name__, data_path))
+
+                with open(data_path, "rb") as f:
+                    gc.disable()  # this improve the required loading time!
+                    data = pickle.load(f)
+                    gc.enable()
+            else:
+                data = make_func(*args, **kwargs)
+
+                if verbose:
+                    print("write {} data to {}".format(make_func.__name__, data_path))
+
+                with open(data_path, "wb") as f:
+                    pickle.dump(data, f, 2)
+                    # Protocol version 0 itr_features_balanceds the original ASCII protocol and is backwards compatible with earlier versions of Python.
+                    # Protocol version 1 is the old binary format which is also compatible with earlier versions of Python.
+                    # Protocol version 2 was introduced in Python 2.3. It provides much more efficient pickling of new-style classes.
+
+            return data
+        return wfunc
+    return dfunc

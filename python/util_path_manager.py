@@ -170,7 +170,7 @@ def path_to_measure(multi_mode,
     return path
 
 
-def path_to_my_db(is_reduce, do_preprocess, ws, DS, **kwargs):
+def path_to_my_db(DS, is_reduce, ws, do_preprocess, **kwargs):
     """
 
     :param is_reduce:
@@ -195,8 +195,16 @@ def path_to_my_db(is_reduce, do_preprocess, ws, DS, **kwargs):
     return mit_pickle_name
 
 
-def path_to_ml_data(DS, ws, do_preprocess, maxRR, use_RR, norm_RR,
-                    compute_morph, is_reduce, prepare=True, **kwargs):
+def path_to_ml_data(DS,
+                    ws,
+                    do_preprocess,
+                    is_reduce,
+                    maxRR,
+                    use_RR,
+                    norm_RR,
+                    compute_morph,
+                    prepare=True,
+                    **kwargs):
     """
 
 

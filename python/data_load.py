@@ -20,10 +20,12 @@ import operator
 
 from data_base import mit_db
 from config import *
+from utils import load_pkl_from_storage
 from utils_ecg import *
 from util_path_manager import path_to_ml_data, path_to_my_db
 
 
+@load_pkl_from_storage(path_func=path_to_ml_data)
 def load_mit_db(
         DS: str,
         ws,
@@ -51,23 +53,7 @@ def load_mit_db(
     :return: features, labels, patient_num_beats
     """
 
-    params_for_naming = locals()
-
-    # load directly
-    features_labels_name = path_to_ml_data(**params_for_naming)
-
-    if os.path.isfile(features_labels_name):
-        print("Loading pickle: " + features_labels_name + "...")
-        with open(features_labels_name, 'rb') as f:
-            # disable garbage collector, his improve the required loading time!
-            gc.disable()
-            features, labels, patient_num_beats = pickle.load(f)
-            gc.enable()
-        return features, labels, patient_num_beats
-
-    # make one
-    # if both lead is usable, then the DS is reduced
-    my_db = load_mitbih_db(DS, is_reduce, ws=ws, do_preprocess=do_preprocess)
+    my_db = mitbih_db(DS, is_reduce, ws=ws, do_preprocess=do_preprocess)
 
     # DS for wvlt+pca
     # (winL, winR) for mymorph
@@ -76,16 +62,11 @@ def load_mit_db(
     labels = my_db.get_labels()
     patient_num_beats = my_db.get_n_beats_per_record()
 
-    # Set labels array!
-    if is_save:
-        print('writing pickle: ' + features_labels_name + '...')
-        with open(features_labels_name, 'wb') as f:
-            pickle.dump([features, labels, patient_num_beats], f, 2)
-
     return features, labels, patient_num_beats
 
 
-def load_mitbih_db(DS, is_reduce, ws, do_preprocess=False, is_save=True):
+@load_pkl_from_storage(path_func=path_to_my_db)
+def mitbih_db(DS, is_reduce, ws, do_preprocess=False):
     """
 
     load mitbih db as my_db
@@ -94,52 +75,12 @@ def load_mitbih_db(DS, is_reduce, ws, do_preprocess=False, is_save=True):
     :param ws: Tuple[int], (winL, winR), window size
     :param do_preprocess: Bool
     :param is_reduce: Bool
-    :param is_save: Bool
-    :return: my_db object
-    """
-
-    print("Loading MIT BIH arr (" + DS + ") ...")
-
-    mit_pickle_name = path_to_my_db(is_reduce, do_preprocess, ws, DS)
-
-    # If the data with that configuration has been already computed Load pickle
-    if os.path.isfile(mit_pickle_name):
-        print("load my_db from {}".format(mit_pickle_name))
-        with open(mit_pickle_name, 'rb') as f:
-            # disable garbage collector
-            gc.disable()  # this improve the required loading time!
-            my_db = pickle.load(f)
-            gc.enable()
-        return my_db
-    else:
-        return make_mitbih_db(DS, mit_pickle_name, ws, is_reduce, do_preprocess, is_save)
-
-
-def make_mitbih_db(DS, db_path, ws, is_reduce, do_preprocess=False, is_save=True):
-    """
-
-    make my_db based on mitbih
-
-    :param DS: Str, "DS1" or "DS2"
-    :param db_path: str
-    :param ws: Tuple[int], (winL, winR), window size
-    :param do_preprocess: Bool
-    :param is_reduce: Bool
-    :param is_save: Bool
     :return: my_db object
     """
 
     bank_key = "reduced" if is_reduce else "normal"
     record_ids = DS_bank[bank_key][DS]
     my_db = load_signals(record_ids, ws, do_preprocess)
-
-    if is_save:
-        print("Saving signal processed data ...")
-        with open(db_path, 'wb') as f:
-            pickle.dump(my_db, f, 2)
-            # Protocol version 0 itr_features_balanceds the original ASCII protocol and is backwards compatible with earlier versions of Python.
-            # Protocol version 1 is the old binary format which is also compatible with earlier versions of Python.
-            # Protocol version 2 was introduced in Python 2.3. It provides much more efficient pickling of new-style classes.
 
     return my_db
 
@@ -311,37 +252,6 @@ def load_ann_from_txt(filename):
                 annotations.append((int(r_pos), beat_label))
 
     return annotations
-
-
-def load_pkl_from_storage(path_func, verbose=True):
-    def dfunc(make_func):
-        def wfunc(*args, **kwargs):
-            data_path = path_func(*args, **kwargs)
-
-            if os.path.isfile(data_path):
-
-                if verbose:
-                    print("load {} data from {}".format(make_func.__name__, data_path))
-
-                with open(data_path, "rb") as f:
-                    gc.disable()  # this improve the required loading time!
-                    data = pickle.load(f)
-                    gc.enable()
-            else:
-                data = make_func(*args, **kwargs)
-
-                if verbose:
-                    print("write {} data to {}".format(make_func.__name__, data_path))
-
-                with open(data_path, "wb") as f:
-                    pickle.dump(data, f, 2)
-                    # Protocol version 0 itr_features_balanceds the original ASCII protocol and is backwards compatible with earlier versions of Python.
-                    # Protocol version 1 is the old binary format which is also compatible with earlier versions of Python.
-                    # Protocol version 2 was introduced in Python 2.3. It provides much more efficient pickling of new-style classes.
-
-            return data
-        return wfunc
-    return dfunc
 
 
 if __name__ == "__main__":
