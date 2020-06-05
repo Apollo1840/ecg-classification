@@ -66,12 +66,14 @@ class mit_db:
         # Compute RR intervals features
 
         if use_RR:
-            features_rr = get_features_rr(RR)
-            features = np.column_stack((features, features_rr)) if features.size else features_rr
+            with PrintTime("rr"):
+                features_rr = get_features_rr(RR)
+                features = np.column_stack((features, features_rr)) if features.size else features_rr
 
         if norm_RR:
-            features_rr_norm = get_features_rr_norm(RR)
-            features = np.column_stack((features, features_rr_norm)) if features.size else features_rr_norm
+            with PrintTime("norm_rr"):
+                features_rr_norm = get_features_rr_norm(RR)
+                features = np.column_stack((features, features_rr_norm)) if features.size else features_rr_norm
 
         ##########################################################################
         # Compute morphological features
@@ -128,8 +130,8 @@ class mit_db:
                 print(features.shape)
 
         # My morphological descriptor
-        if 'myMorph' in compute_morph:
-            with PrintTime("myMorph"):
+        if 'OurMorph' in compute_morph:
+            with PrintTime("OurMorph"):
                 features_temp = get_features_mymorph(self.beat, leads_flag, ws[0], ws[1])
                 features = np.column_stack((features, features_temp)) if features.size else features_temp
                 print(features.shape)

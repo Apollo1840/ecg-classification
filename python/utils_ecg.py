@@ -36,11 +36,14 @@ def parse_annotations(annotations, ref_sig, ws=(90, 90), size_rr_max=20):
     beat_indices = []
     labels = []
     r_peaks_original = []
+    r_peaks = []
     is_r_valid = []
 
     for r_pos, beat_label in annotations:
         r_peaks_original.append(r_pos)
         beat_index, label = parse_beat(r_pos, beat_label, ref_sig, ws, rr_max=size_rr_max)
+        _, r_pos, _ = beat_index
+        r_peaks.append(r_pos)
 
         if label:
             beat_indices.append(beat_index)
@@ -51,9 +54,9 @@ def parse_annotations(annotations, ref_sig, ws=(90, 90), size_rr_max=20):
             is_r_valid.append(False)
 
     # definitly:
-    # assert len(r_peaks_original) == len(is_r_valid)
+    # assert len(r_peaks) == len(r_peaks_original) == len(is_r_valid)
 
-    return beat_indices, labels, r_peaks_original, is_r_valid
+    return beat_indices, labels, r_peaks_original, r_peaks, is_r_valid
 
 
 def parse_beat(r_pos, beat_type, ref_sig, ref_ws, is_relocate=True, rr_max=20):

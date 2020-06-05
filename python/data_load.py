@@ -100,11 +100,11 @@ def load_mitbih_db(DS, is_reduce, ws, do_preprocess=False, is_save=True):
 
     print("Loading MIT BIH arr (" + DS + ") ...")
 
-    winL, winR = ws
-    mit_pickle_name = path_to_my_db(is_reduce, do_preprocess, winL, winR, DS)
+    mit_pickle_name = path_to_my_db(is_reduce, do_preprocess, ws, DS)
 
     # If the data with that configuration has been already computed Load pickle
     if os.path.isfile(mit_pickle_name):
+        print("load my_db from {}".format(mit_pickle_name))
         with open(mit_pickle_name, 'rb') as f:
             # disable garbage collector
             gc.disable()  # this improve the required loading time!
@@ -130,7 +130,8 @@ def make_mitbih_db(DS, db_path, ws, is_reduce, do_preprocess=False, is_save=True
     """
 
     bank_key = "reduced" if is_reduce else "normal"
-    my_db = load_signals(DS_bank[bank_key][DS], ws, do_preprocess)
+    record_ids = DS_bank[bank_key][DS]
+    my_db = load_signals(record_ids, ws, do_preprocess)
 
     if is_save:
         print("Saving signal processed data ...")
@@ -224,13 +225,12 @@ def load_signal_single(f_record, f_annotation, ws, do_preprocess, verbose=False)
     annotations = load_ann_from_txt(filename)
 
     # Extract the R-peaks from annotations
-    beat_indices, labels, r_peaks_original, is_r_valid = parse_annotations(
+    beat_indices, labels, r_peaks_original, r_peaks, is_r_valid = parse_annotations(
         annotations,
         MLII,
         ws,
         size_rr_max=20)
 
-    r_peaks = [r_pos for _, r_pos, _ in beat_indices]
     beats = [(MLII[beat_start: beat_end], V1[beat_start: beat_end]) for beat_start, _, beat_end in beat_indices]
     labels = [AAMI_CLASSES.index(label) for label in labels]
 
@@ -311,6 +311,37 @@ def load_ann_from_txt(filename):
                 annotations.append((int(r_pos), beat_label))
 
     return annotations
+
+
+def load_pkl_from_storage(path_func, verbose=True):
+    def dfunc(make_func):
+        def wfunc(*args, **kwargs):
+            data_path = path_func(*args, **kwargs)
+
+            if os.path.isfile(data_path):
+
+                if verbose:
+                    print("load {} data from {}".format(make_func.__name__, data_path))
+
+                with open(data_path, "rb") as f:
+                    gc.disable()  # this improve the required loading time!
+                    data = pickle.load(f)
+                    gc.enable()
+            else:
+                data = make_func(*args, **kwargs)
+
+                if verbose:
+                    print("write {} data to {}".format(make_func.__name__, data_path))
+
+                with open(data_path, "wb") as f:
+                    pickle.dump(data, f, 2)
+                    # Protocol version 0 itr_features_balanceds the original ASCII protocol and is backwards compatible with earlier versions of Python.
+                    # Protocol version 1 is the old binary format which is also compatible with earlier versions of Python.
+                    # Protocol version 2 was introduced in Python 2.3. It provides much more efficient pickling of new-style classes.
+
+            return data
+        return wfunc
+    return dfunc
 
 
 if __name__ == "__main__":

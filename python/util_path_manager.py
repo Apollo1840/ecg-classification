@@ -170,19 +170,20 @@ def path_to_measure(multi_mode,
     return path
 
 
-def path_to_my_db(reduced_DS, do_preprocess, winL, winR, DS):
+def path_to_my_db(is_reduce, do_preprocess, ws, DS, **kwargs):
     """
 
-    :param reduced_DS:
+    :param is_reduce:
     :param do_preprocess:
-    :param winL:
-    :param winR:
+    :param ws: Tuple[int], (winL, winR)
     :param DS:
     :return: str
     """
 
+    winL, winR = ws
+
     mit_pickle_name = DB_PATH + 'python_mit'
-    if reduced_DS:
+    if is_reduce:
         mit_pickle_name = mit_pickle_name + '_reduced_'
 
     if do_preprocess:

@@ -32,7 +32,7 @@ def model_search_unit():
     }
 
     searchable_params = {
-        "c_value": 0.001,
+        "c_value": 0.01,
         "gamma_value": 0.0,
         "compute_morph": ['resample_10', 'lbp', 'hbf5', 'wvlt', 'HOS'],
     }
@@ -56,6 +56,9 @@ def train_and_evaluation(
         gamma_value=0.0,
         reduced_DS=False,
         verbose=True,
+        pca_k=0,
+        leads_flag=[1, 0],
+        feature_selection=""
 ):
     """
     train the model on training records.
@@ -264,7 +267,9 @@ def train_model(model_svm_path,
         # Export model: save/write trained SVM model
         if not os.path.exists(os.path.dirname(model_svm_path)):
             os.makedirs(os.path.dirname(model_svm_path))
-        joblib.dump(svm_model, model_svm_path)
+
+        with PrintTime("save the model", verbose=verbose):
+            joblib.dump(svm_model, model_svm_path)
 
     # TODO Export StandardScaler()
 
@@ -272,15 +277,4 @@ def train_model(model_svm_path,
 
 
 if __name__ == "__main__":
-    train_and_evaluation(
-        multi_mode="ovo",
-        winL=90,
-        winR=90,
-        do_preprocess=True,
-        maxRR=True,
-        use_RR=False,
-        norm_RR=True,
-        compute_morph={'resample_10', 'lbp', 'hbf5', 'wvlt', 'HOS'},
-        reduced_DS=True,
-        leads_flag=[1, 0],
-    )
+    model_search_unit()
