@@ -1,43 +1,15 @@
 #!/usr/bin/env python
 
-import os
-import numpy as np
-import joblib
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn import svm
-from sklearn.metrics import f1_score
+import json
+from sklearn.metrics import f1_score, classification_report
 from pprint import pprint
 
 from util_path_manager import path_to_model, path_to_measure
 from data_load import load_mit_db
 from model_aggregation import *
 from utils import PrintTime, calc_class_weights
-
-
-def model_search_unit():
-    fixed_parameters = {
-        "multi_mode": "ovo",
-        "winL": 90,
-        "winR": 90,
-        "do_preprocess": True,
-        "use_weight_class": True,
-        "maxRR": True,
-        "use_RR": False,
-        "norm_RR": True,
-        "oversamp_method": "",
-        "cross_patient": False,
-        "reduced_DS": False,
-        "verbose": True,
-    }
-
-    searchable_params = {
-        "c_value": 0.001,
-        "gamma_value": 0.0,
-        "compute_morph": ['resample_10', 'lbp', 'hbf5', 'wvlt', 'HOS'],
-    }
-
-    train_and_evaluation(**fixed_parameters, **searchable_params)
+from config import *
+from train_svm import load_ml_data, train_model_module
 
 
 def train_and_evaluation(
@@ -56,7 +28,9 @@ def train_and_evaluation(
         gamma_value=0.0,
         reduced_DS=False,
         verbose=True,
-
+        pca_k=0,
+        leads_flag=[1, 0],
+        feature_selection=""
 ):
     """
     train the model on training records.
@@ -117,171 +91,24 @@ def train_and_evaluation(
         print("Testing model on MIT-BIH DS2: " + model_svm_path + "...")
 
     pred_labels = svm_model.predict(eval_features)
-    print("marco f1 score: ", f1_score(eval_labels, pred_labels, average='macro'))
+
+    f1score_marco = f1_score(eval_labels, pred_labels, average='macro')
+    print("marco f1 score: ", f1score_marco)
+
+    cls_report = classification_report(eval_labels, pred_labels, target_names=AAMI_CLASSES)
+    print(cls_report)
+
+    report_dict = {
+        "config": params_for_naming,
+        "cls_report": cls_report,
+        "marco_f1": f1score_marco
+    }
+
+    cross_val_type = "pat_cv" if cross_patient else "beat_cv"
+    with open("hypersearch/{}_f1_{:.4}.json".format(cross_val_type, f1score_marco), "w") as f:
+        json.dump(report_dict, f)
 
     print("congrats! evaluation complete! ")
 
     return svm_model, pred_labels, eval_labels
 
-
-def load_ml_data(ws,
-                 data_do_preprocess,
-                 data_is_reduced,
-                 ml_is_maxRR,
-                 ml_use_RR,
-                 ml_norm_RR,
-                 ml_compute_morph,
-                 is_normalize=True,
-                 cross_patient=True,
-                 verbose=False):
-
-    if cross_patient:
-        # Load train data
-        # tr_ means train_
-        tr_features, tr_labels, _ = load_mit_db('DS1',
-                                                ws,
-                                                data_do_preprocess,
-                                                data_is_reduced,
-                                                ml_is_maxRR,
-                                                ml_use_RR,
-                                                ml_norm_RR,
-                                                ml_compute_morph)
-
-        # Load Test data
-        # eval_ means evaluation
-        eval_features, eval_labels, _ = load_mit_db('DS2',
-                                                    ws,
-                                                    data_do_preprocess,
-                                                    data_is_reduced,
-                                                    ml_is_maxRR,
-                                                    ml_use_RR,
-                                                    ml_norm_RR,
-                                                    ml_compute_morph)
-        if is_normalize and verbose:
-            print("normalizing the data ... ")
-
-            scaler = StandardScaler()
-            scaler.fit(tr_features)
-            tr_features_scaled = scaler.transform(tr_features)
-            eval_features_scaled = scaler.transform(eval_features)
-        else:
-            tr_features_scaled = tr_features
-            eval_features_scaled = eval_features
-
-    else:
-        features, labels, _ = load_mit_db('DS12',
-                                          ws,
-                                          data_do_preprocess,
-                                          data_is_reduced,
-                                          ml_is_maxRR,
-                                          ml_use_RR,
-                                          ml_norm_RR,
-                                          ml_compute_morph)
-
-        tr_features, eval_features, tr_labels, eval_labels = train_test_split(features,
-                                                                              labels,
-                                                                              test_size=0.2,
-                                                                              random_state=2020)
-
-        if is_normalize and verbose:
-            print("normalizing the data ... ")
-
-            scaler = StandardScaler()
-            scaler.fit(tr_features)
-            tr_features_scaled = scaler.transform(tr_features)
-            eval_features_scaled = scaler.transform(eval_features)
-        else:
-            tr_features_scaled = tr_features
-            eval_features_scaled = eval_features
-
-    # todo: store the scaler
-    # input shape is the same
-    assert tr_features_scaled.shape[1:] == eval_features_scaled.shape[1:]
-
-    return tr_features_scaled, tr_labels, eval_features_scaled, eval_labels
-
-
-def train_model_module(model_svm_path,
-                       tr_features,
-                       tr_labels,
-                       verbose=False,
-                       **model_kwargs):
-    """
-    train the model if it is needed.
-
-    :param model_svm_path:
-    :param tr_features:
-    :param tr_labels:
-    :param verbose:
-    :param model_kwargs:
-    :return:
-    """
-    if os.path.isfile(model_svm_path):
-        # Load the trained model!
-        svm_model = joblib.load(model_svm_path)
-
-    else:
-        svm_model = train_model(model_svm_path, tr_features, tr_labels, **model_kwargs, verbose=verbose)
-    return svm_model
-
-
-def train_model(model_svm_path,
-                tr_features,
-                tr_labels,
-                verbose=False,
-                **model_kwargs):
-
-    C_value = model_kwargs.get("c_value", 1)
-    gamma_value = model_kwargs.get("gamma_value", 0)
-    multi_mode = model_kwargs.get("multi_model", "ovo")
-
-    use_probability = False
-    class_weights = calc_class_weights(tr_labels)
-    # class_weight='balanced',
-    gamma_value = gamma_value if gamma_value != 0.0 else "auto"
-
-    # TODO load best params from cross validation!
-
-    # NOTE 0.0 means 1/n_features default value
-    svm_model = svm.SVC(C=C_value,
-                        kernel='rbf',
-                        degree=3,
-                        gamma=gamma_value,
-                        coef0=0.0,
-                        shrinking=True,
-                        probability=use_probability,
-                        tol=0.001,
-                        cache_size=200,
-                        class_weight=class_weights,
-                        verbose=verbose,
-                        max_iter=-1,
-                        decision_function_shape=multi_mode,
-                        random_state=None)
-
-    with PrintTime("train the model", verbose=verbose):
-        svm_model.fit(tr_features, tr_labels)
-
-    if model_svm_path:
-        # Export model: save/write trained SVM model
-        if not os.path.exists(os.path.dirname(model_svm_path)):
-            os.makedirs(os.path.dirname(model_svm_path))
-        joblib.dump(svm_model, model_svm_path)
-
-    # TODO Export StandardScaler()
-
-    return svm_model
-
-
-if __name__ == "__main__":
-    train_and_evaluation(
-        multi_mode="ovo",
-        winL=90,
-        winR=90,
-        do_preprocess=True,
-        maxRR=True,
-        use_RR=False,
-        norm_RR=True,
-        compute_morph={'resample_10', 'lbp', 'hbf5', 'wvlt', 'HOS'},
-        reduced_DS=True,
-        leads_flag=[1, 0],
-    )

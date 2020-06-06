@@ -41,23 +41,6 @@ uniform_pattern_list = np.array(
      251, 252, 253, 254, 255])
 
 
-def save_wvlt_PCA(PCA, pca_k, family, level):
-    f = open('Wvlt_' + family + '_' + str(level) + '_PCA_' + str(pca_k) + '.p', 'wb')
-    pickle.dump(PCA, f, 2)
-    f.close()
-
-
-def load_wvlt_PCA(pca_k, family, level):
-    f = open('Wvlt_' + family + '_' + str(level) + '_PCA_' + str(pca_k) + '.p', 'rb')
-    # disable garbage collector
-    gc.disable()  # this improve the required loading time!
-    PCA = pickle.load(f)
-    gc.enable()
-    f.close()
-
-    return PCA
-
-
 def compute_RR_intervals(R_poses):
     """
     Input: the R-peaks from a signal
@@ -126,6 +109,23 @@ def compute_RR_intervals(R_poses):
         # features_RR.append([pre_R[i], post_R[i], local_R[i], global_R[i]])
 
     return features_RR
+
+
+def save_wvlt_PCA(PCA, pca_k, family, level):
+    f = open('Wvlt_' + family + '_' + str(level) + '_PCA_' + str(pca_k) + '.p', 'wb')
+    pickle.dump(PCA, f, 2)
+    f.close()
+
+
+def load_wvlt_PCA(pca_k, family, level):
+    f = open('Wvlt_' + family + '_' + str(level) + '_PCA_' + str(pca_k) + '.p', 'rb')
+    # disable garbage collector
+    gc.disable()  # this improve the required loading time!
+    PCA = pickle.load(f)
+    gc.enable()
+    f.close()
+
+    return PCA
 
 
 # Compute the wavelet descriptor for a beat
@@ -281,6 +281,8 @@ def calc_RR_intervals(r_poses, valid_r):
 
     for id_record in range(len(r_poses)):
         RR[id_record] = compute_RR_intervals(r_poses[id_record])
+
+        assert len(RR[id_record].pre_R) == len(valid_r[id_record])
 
         # only consider valid r_peak
         RR[id_record].pre_R = RR[id_record].pre_R[(valid_r[id_record] == 1)]
