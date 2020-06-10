@@ -124,6 +124,7 @@ def path_to_model(multi_mode,
                   gamma_value,
                   c_value,
                   delimiter="_",
+                  cross_patient=False,
                   **kwargs):
 
     dirpath = os.path.join(DB_PATH, "svm_models")
@@ -133,6 +134,8 @@ def path_to_model(multi_mode,
     model_postfix = '_C_' + str(c_value)
     if gamma_value:
         model_postfix += '_g_' + str(gamma_value)
+    if cross_patient:
+        model_postfix += '_crossp'
 
     model_full_name = model_name + model_postfix + '.joblib.pkl'
 

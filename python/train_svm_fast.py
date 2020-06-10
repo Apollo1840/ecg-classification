@@ -47,7 +47,7 @@ def train_and_evaluation(
     :param norm_RR:
     :param compute_morph:
     :param oversamp_method:
-    :param cross_patient: Bool
+    :param cross_patient: Bool, train and test has no same patient
     :param c_value:
     :param gamma_value:
     :param reduced_DS: Bool,
@@ -87,13 +87,17 @@ def train_and_evaluation(
     svm_model = train_model_module(model_svm_path, tr_features, tr_labels, **model_kwargs, verbose=verbose)
 
     # 3. evaluate the model
-    if verbose:
+    if verbose and cross_patient:
         print("Testing model on MIT-BIH DS2: " + model_svm_path + "...")
+    elif verbose and not cross_patient:
+        print("Testing model on test part of DS12: " + model_svm_path + "...")
 
     pred_labels = svm_model.predict(eval_features)
 
-    f1score_marco = f1_score(eval_labels, pred_labels, average='macro')
-    print("marco f1 score: ", f1score_marco)
+    f1score_macro = f1_score(eval_labels, pred_labels, average='macro')
+    print("macro f1 score: ", f1score_macro)
+    f1score_micro = f1_score(eval_labels, pred_labels, average='micro')
+    print("micro f1 score: ", f1score_micro)
 
     cls_report = classification_report(eval_labels, pred_labels, target_names=AAMI_CLASSES)
     print(cls_report)
@@ -101,11 +105,12 @@ def train_and_evaluation(
     report_dict = {
         "config": params_for_naming,
         "cls_report": cls_report,
-        "marco_f1": f1score_marco
+        "macro_f1": f1score_macro,
+        "micro_f1": f1score_micro
     }
 
     cross_val_type = "pat_cv" if cross_patient else "beat_cv"
-    with open("hypersearch/{}_f1_{:.4}.json".format(cross_val_type, f1score_marco), "w") as f:
+    with open("hypersearch/{}_f1_{:.4}.json".format(cross_val_type, f1score_macro), "w") as f:
         json.dump(report_dict, f)
 
     print("congrats! evaluation complete! ")

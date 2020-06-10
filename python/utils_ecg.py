@@ -77,6 +77,8 @@ def parse_beat(r_pos, beat_type, ref_sig, ref_ws, is_relocate=True, rr_max=20):
     if is_relocate:
         r_pos = relocate_r_peak(r_pos, ref_sig, rr_max)
 
+    # condition 1: r_pos is feasible region
+    # condition 2: beat_type is accepted
     if winL < r_pos < (len(ref_sig) - winR) and beat_type in MITBIH_CLASSES:
         beatL = r_pos - winL
         beatR = r_pos + winR

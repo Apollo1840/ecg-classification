@@ -1,5 +1,5 @@
-
-from train_svm_fast import  train_and_evaluation
+from tqdm import tqdm
+from train_svm_fast import train_and_evaluation
 
 
 def model_search_unit():
@@ -49,15 +49,16 @@ def hypersearch():
         "compute_morph": ['wvlt', 'HOS', 'u-lbp', 'OurMorph'],
     }
 
-    # c_values = [1]
-    c_values = [0.01, 0.1, 1, 5, 10, 50, 100]
+    # c_values = [10, 50, 80, 100, 120, 150]
+    # c_values = [0.1, 1, 5, 10, 50, 100, 500, 1000]
+    c_values = [1, 10, 100]
     cross_patient = [True, False]
 
-    for c_value in c_values:
+    for c_value in tqdm(c_values):
         for cross in cross_patient:
             searchable_params["c_value"] = c_value
             fixed_parameters["cross_patient"] = cross
-    train_and_evaluation(**fixed_parameters, **searchable_params)
+            train_and_evaluation(**fixed_parameters, **searchable_params)
 
 
 if __name__ == "__main__":
