@@ -1,5 +1,5 @@
 
-from train_svm_fast import  train_and_evaluation
+from train_svm_fast import train_and_evaluation
 
 
 def model_search_unit():
@@ -57,7 +57,7 @@ def hypersearch():
         for cross in cross_patient:
             searchable_params["c_value"] = c_value
             fixed_parameters["cross_patient"] = cross
-    train_and_evaluation(**fixed_parameters, **searchable_params)
+            train_and_evaluation(**fixed_parameters, **searchable_params)
 
 
 if __name__ == "__main__":
