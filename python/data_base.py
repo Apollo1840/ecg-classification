@@ -27,7 +27,7 @@ class mit_db:
         # Instance atributes
         self.filename = []
         self.raw_signal = []
-        self.beat = np.empty([])  # dim: record, beat, lead, signal
+        self.beat = np.empty([])  # dim: record, beat, lead, signal; num_record, num_beats, num_lead, amplitude
         self.class_ID = []
         self.valid_R = []
         self.R_pos = []
@@ -61,6 +61,8 @@ class mit_db:
             else:
                 r_poses = self.orig_R_pos
             RR = calc_RR_intervals(r_poses, self.valid_R)
+            # RR is a list of RR object
+            # each RR object represent RR features of one record. it has 4 lists as attributes.
 
         #########################################################################
         # Compute RR intervals features
@@ -75,6 +77,7 @@ class mit_db:
                 features_rr_norm = get_features_rr_norm(RR)
                 features = np.column_stack((features, features_rr_norm)) if features.size else features_rr_norm
 
+        print(features.shape)
         ##########################################################################
         # Compute morphological features
 
