@@ -103,7 +103,7 @@ def mitbih_db(DS, is_reduce, ws, do_preprocess=False, verbose=False):
 
     list_beats = [[] for _ in range(len(record_ids))]  # dim: record, beat, lead, signal
     list_class_id = [[] for _ in range(len(record_ids))]
-    list_raw_signal = []
+    list_raw_signal = [[] for _ in range(len(record_ids))]
 
     # for r, a in zip(fRecords, fAnnotations):
     # r stands for record_id
