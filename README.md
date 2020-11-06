@@ -70,9 +70,11 @@ Performed using Matlab 2016b 64 bits
 
 2. Run:
 
-    Run the file *run_train_SVM.py* and adapt the desired configuration to call *train_SVM.py* file. This call method will train the SVM model using the training set and evaluates the model on a different test set. 
+    Goto `./python`. 
+    
+    Run the file `run_train_SVM.py` and adapt the desired configuration to call *train_SVM.py* file. This call method will train the SVM model using the training set and evaluates the model on a different test set. 
 
-    Check and adjust the path dirs on *train_SVM.py* file.
+    Check and adjust the path dirs on `train_SVM.py` file.
 
 4. Combining multiples classifiers:
     
