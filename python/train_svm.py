@@ -456,7 +456,7 @@ if __name__ == "__main__":
 
             # model_parameters
             multi_mode="ovo",
-            c_value=0.01,
+            c_value=c_value,
 
             verbose=True
         )
