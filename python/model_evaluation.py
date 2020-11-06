@@ -10,6 +10,13 @@ Mondejar Guerra, Victor M.
 
 from sklearn import metrics
 import numpy as np
+import json
+import os
+
+from config import AAMI_CLASSES, MEASURE_PATH
+
+FILENAME_EXP_RESULT = "{}_acc_{:.2f}_f1_{:.2f}.json"  # name_exp, acc, marco_f1
+PATH_EXP_RESULT = os.path.join(MEASURE_PATH, FILENAME_EXP_RESULT)
 
 
 class performance_measures:
@@ -57,13 +64,34 @@ def compute_cohen_kappa(confusion_matrix):
     return kappa, prob_observed, prob_expected
 
 
+def report_performance(y_test, y_pred, exp_name="", target_names=AAMI_CLASSES):
+    cls_report = metrics.classification_report(y_test,
+                                               y_pred,
+                                               target_names=target_names)
+    print(cls_report)
+
+    acc = metrics.accuracy_score(y_test, y_pred)
+    print("accuracy score: ", acc)
+
+    f1score_macro = metrics.f1_score(y_test, y_pred, average='macro')
+    print("macro f1 score: ", f1score_macro)
+
+    if exp_name:
+        with open(PATH_EXP_RESULT.format(exp_name, acc, f1score_macro), "w") as f:
+            json.dump(cls_report, f)
+
+    return acc, f1score_macro
+
+
 # Compute the performance measures following the AAMI recommendations.
 # Using sensivity (recall), specificity (precision) and accuracy 
 # for each class: (N, SVEB, VEB, F)
 def compute_AAMI_performance_measures(predictions, gt_labels, verbose=False):
-
     if verbose:
         print("computing AAMI performance ...")
+
+    print("report peformance: ")
+    report_performance(predictions, gt_labels, exp_name="victor_orig")
 
     n_classes = 4  # 5
     pf_ms = performance_measures(n_classes)

@@ -38,10 +38,12 @@ def parse_annotations(annotations, ref_sig, ws=(90, 90), size_rr_max=20):
     r_peaks_original = []
     r_peaks = []
     is_r_valid = []
+    invalid_reasons = []
 
     for r_pos, beat_label in annotations:
         r_peaks_original.append(r_pos)
-        beat_index, label = parse_beat(r_pos, beat_label, ref_sig, ws, rr_max=size_rr_max)
+
+        beat_index, label, invalid_reason = parse_beat(r_pos, beat_label, ref_sig, ws, rr_max=size_rr_max)
         _, r_pos, _ = beat_index
         r_peaks.append(r_pos)
 
@@ -52,11 +54,17 @@ def parse_annotations(annotations, ref_sig, ws=(90, 90), size_rr_max=20):
             is_r_valid.append(True)
         else:
             is_r_valid.append(False)
+            invalid_reasons.append(invalid_reason)
 
     # definitly:
-    # assert len(r_peaks) == len(r_peaks_original) == len(is_r_valid)
+    assert len(r_peaks) == len(r_peaks_original) == len(is_r_valid)
 
-    return beat_indices, labels, r_peaks_original, r_peaks, is_r_valid
+    return beat_indices, labels, r_peaks_original, r_peaks, is_r_valid, invalid_reasons
+
+
+BEAT_LABEL_ERROR = "beat_type not in mitbih_class"
+BEAT_CLASS_ERROR = "beat_type not in AAMI"
+BEAT_EDGE_ERROR = "beat_boudary out of signal"
 
 
 def parse_beat(r_pos, beat_type, ref_sig, ref_ws, is_relocate=True, rr_max=20):
@@ -72,20 +80,28 @@ def parse_beat(r_pos, beat_type, ref_sig, ref_ws, is_relocate=True, rr_max=20):
     :return: Tuple, str, str is AAMI label.
     """
 
-    winL, winR = ref_ws
-
     if is_relocate:
         r_pos = relocate_r_peak(r_pos, ref_sig, rr_max)
 
+    winL, winR = ref_ws
+    class_AAMI = mitbih2aami(beat_type)
+
     # condition 1: r_pos is feasible region
     # condition 2: beat_type is accepted
-    if winL < r_pos < (len(ref_sig) - winR) and beat_type in MITBIH_CLASSES:
+    error_source = None
+    if beat_type not in MITBIH_CLASSES:
+        error_source = BEAT_LABEL_ERROR
+    elif class_AAMI is None:
+        error_source = BEAT_CLASS_ERROR
+    elif not winL < r_pos < (len(ref_sig) - winR):
+        error_source = BEAT_EDGE_ERROR
+
+    if error_source is None:
         beatL = r_pos - winL
         beatR = r_pos + winR
-        class_AAMI = mitbih2aami(beat_type)
-        return (beatL, r_pos, beatR), class_AAMI
+        return (beatL, r_pos, beatR), class_AAMI, error_source
     else:
-        return (None, r_pos, None), None
+        return (None, r_pos, None), None, error_source
 
 
 def relocate_r_peak(r_pos, ref_signal, rr_max=20):

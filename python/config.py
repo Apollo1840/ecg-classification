@@ -1,6 +1,6 @@
 
 DATA_DIR = '/home/congyu/dataset/ECG/mitbih/csv/'
-DB_PATH = "/home/congyu/dataset/ECG/mitdb/ml_learning/"
+DB_PATH = "/home/congyu/dataset/ECG/mitbihDB/ml_learning/"
 MEASURE_PATH = "/home/congyu/ECG/model_train_log/ecg_classification/results/"
 
 MITBIH_CLASSES = ['N', 'L', 'R', 'e', 'j', 'A', 'a', 'J', 'S', 'V', 'E', 'F']  # , 'P', '/', 'f', 'u']

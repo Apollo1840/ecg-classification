@@ -236,7 +236,7 @@ def path_to_ml_data(DS,
     if norm_RR:
         features_labels_name += '_norm_RR'
 
-    for descp in compute_morph:
+    for descp in sorted(compute_morph):
         features_labels_name += '_' + descp
 
     if is_reduce:

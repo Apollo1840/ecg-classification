@@ -15,6 +15,8 @@ from tqdm import tqdm
 import pickle
 import gc
 import numpy as np
+import json
+from collections import Counter
 
 import operator
 
@@ -26,7 +28,7 @@ from util_path_manager import path_to_ml_data, path_to_my_db
 
 
 @load_pkl_from_storage(path_func=path_to_ml_data)
-def load_mit_db(
+def load_features_from_mitdb(
         DS: str,
         ws,
         do_preprocess: bool,
@@ -35,7 +37,7 @@ def load_mit_db(
         use_RR: bool,
         norm_RR: bool,
         compute_morph,
-        is_save: bool = True,
+        verbose=False,
 ):
     """
     Load the data with the configuration and features selected
@@ -49,15 +51,22 @@ def load_mit_db(
     :param norm_RR: Bool
     :param compute_morph: List[str] or Set[str],
         can be ['resample_10', 'raw', 'u-lbp', 'lbp', 'hbf5', 'wvlt', 'wvlt+pca', 'HOS', 'myMorph']
-    :param is_save: save loaded as pickle or not
     :return: features, labels, patient_num_beats
     """
 
-    my_db = mitbih_db(DS, is_reduce, ws=ws, do_preprocess=do_preprocess)
+    if verbose:
+        print("loading my_db from mitbih for {} ...".format(DS))
 
-    # DS for wvlt+pca
-    # (winL, winR) for mymorph
+    my_db = mitbih_db(DS, is_reduce, ws=ws, do_preprocess=do_preprocess, verbose=verbose)
+
+    if verbose:
+        introduce_mtibih_db(my_db)
+
     leads_flag = [1, int(is_reduce)]  # [MLII, V1] set the value to 0 or 1 to reference if that lead is used
+
+    if verbose:
+        print("creating features of {} with leads_flag as {}, including: \n{}".format(DS, leads_flag, compute_morph))
+
     features = my_db.get_features(leads_flag, maxRR, use_RR, norm_RR, compute_morph, DS, ws)
     labels = my_db.get_labels()
     patient_num_beats = my_db.get_n_beats_per_record()
@@ -66,34 +75,21 @@ def load_mit_db(
 
 
 @load_pkl_from_storage(path_func=path_to_my_db)
-def mitbih_db(DS, is_reduce, ws, do_preprocess=False):
+def mitbih_db(DS, is_reduce, ws, do_preprocess=False, verbose=False):
     """
 
     load mitbih db as my_db
 
     :param DS: Str, "DS1" or "DS2"
-    :param ws: Tuple[int], (winL, winR), window size
-    :param do_preprocess: Bool
+    :param ws: Tuple[int], (winL, winR), indicates the size of the window centred at R-peak at left and right side
+    :param do_preprocess: Bool, indicates if preprocesing of remove baseline on signal is performed
     :param is_reduce: Bool
     :return: my_db object
     """
 
     bank_key = "reduced" if is_reduce else "normal"
     record_ids = DS_bank[bank_key][DS]
-    my_db = load_signals(record_ids, ws, do_preprocess)
-
-    return my_db
-
-
-def load_signals(record_ids, ws, do_preprocess=True, verbose=False):
-    """
-
-    :param record_ids: List[int], record_ids
-    :param ws: Tuple[int], (winL, winR), indicates the size of the window centred at R-peak at left and right side
-    :param do_preprocess: Bool, indicates if preprocesing of remove baseline on signal is performed
-    :param verbose: Bool
-    :return: mitdb object.
-    """
+    fRecords, fAnnotations = parse_data_dir(DATA_DIR, record_ids)
 
     list_r_peaks_original = [np.array([]) for _ in range(len(record_ids))]
     list_r_peaks = [np.array([]) for _ in range(len(record_ids))]
@@ -105,16 +101,15 @@ def load_signals(record_ids, ws, do_preprocess=True, verbose=False):
     list_class_id = [[] for _ in range(len(record_ids))]
     list_raw_signal = []
 
-    fRecords, fAnnotations = parse_data_dir(DATA_DIR, record_ids)
-
     # for r, a in zip(fRecords, fAnnotations):
     # r stands for record_id
     for r in tqdm(range(0, len(fRecords))):
-        raw_signal, beats, labels, is_r_valid, r_peaks, r_peaks_original = load_signal_single(fRecords[r],
-                                                                                              fAnnotations[r],
-                                                                                              ws,
-                                                                                              do_preprocess,
-                                                                                              verbose)
+        raw_signal, beats, labels, is_r_valid, r_peaks, r_peaks_original = load_signal(fRecords[r],
+                                                                                       fAnnotations[r],
+                                                                                       ws,
+                                                                                       do_preprocess,
+                                                                                       verbose)
+        list_raw_signal[r] = raw_signal
         list_beats[r] = beats
         list_class_id[r] = labels
         list_is_r_valid[r] = is_r_valid
@@ -138,7 +133,18 @@ def load_signals(record_ids, ws, do_preprocess=True, verbose=False):
     return my_db
 
 
-def load_signal_single(f_record, f_annotation, ws, do_preprocess, verbose=False):
+def introduce_mtibih_db(my_db):
+    for i, fRecord in enumerate(my_db.filename):
+        print("record {} get {} beats, lost {} beats".format(fRecord,
+                                                             len(my_db.beat[i]),
+                                                             len(my_db.R_pos[i]) - len(my_db.beat[i])))
+
+    n_beats = sum([len(beats) for beats in my_db.beat])
+    n_r_peaks = sum([len(r_peaks) for r_peaks in my_db.R_pos])
+    print("== get {} beats, lost {} beats ==".format(n_beats, n_r_peaks - n_beats))
+
+
+def load_signal(f_record, f_annotation, ws, do_preprocess, verbose=False):
     """
 
     :param f_record: str
@@ -166,11 +172,15 @@ def load_signal_single(f_record, f_annotation, ws, do_preprocess, verbose=False)
     annotations = load_ann_from_txt(filename)
 
     # Extract the R-peaks from annotations
-    beat_indices, labels, r_peaks_original, r_peaks, is_r_valid = parse_annotations(
+    beat_indices, labels, r_peaks_original, r_peaks, is_r_valid, invalid_reasons = parse_annotations(
         annotations,
         MLII,
         ws,
         size_rr_max=20)
+
+    if verbose:
+        print("in record {}, lost {} beats".format(f_record, len(r_peaks) - len(beat_indices)))
+        print(Counter(invalid_reasons))
 
     beats = [(MLII[beat_start: beat_end], V1[beat_start: beat_end]) for beat_start, _, beat_end in beat_indices]
     labels = [AAMI_CLASSES.index(label) for label in labels]
@@ -256,7 +266,7 @@ def load_ann_from_txt(filename):
 
 if __name__ == "__main__":
     # test level 0
-    load_mit_db(
+    load_features_from_mitdb(
         DS="DS1",
         ws=[90, 90],
         do_preprocess=False,
@@ -268,7 +278,7 @@ if __name__ == "__main__":
         is_save=False)
 
     # test level 1
-    load_mit_db(
+    load_features_from_mitdb(
         DS="DS1",
         ws=[90, 90],
         do_preprocess=False,
@@ -280,7 +290,7 @@ if __name__ == "__main__":
         is_save=False)
 
     # test level 2
-    features, labels, _ = load_mit_db(
+    features, labels, _ = load_features_from_mitdb(
         DS="DS1",
         ws=[90, 90],
         do_preprocess=False,

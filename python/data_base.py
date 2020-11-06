@@ -35,6 +35,14 @@ class mit_db:
 
         self.n_record = len(self.class_ID)
 
+    @property
+    def n_beats_per_record(self):
+        return [len(beats) for beats in self.beat]
+
+    @property
+    def n_beats(self):
+        return sum(self.n_beats_per_record)
+
     def get_features(self, leads_flag, maxRR, use_RR, norm_RR, compute_morph, DS, ws):
         """
 
@@ -89,8 +97,8 @@ class mit_db:
 
         if 'resample_10' in compute_morph:
             with PrintTime("resample_10"):
-                features_raw = get_features_resample(self.beat, leads_flag)
-                features = np.column_stack((features, features_raw)) if features.size else features_raw
+                features_resample = get_features_resample(self.beat, leads_flag)
+                features = np.column_stack((features, features_raw)) if features.size else features_resample
                 print(features.shape)
 
         if 'u-lbp' in compute_morph:
@@ -133,8 +141,8 @@ class mit_db:
                 print(features.shape)
 
         # My morphological descriptor
-        if 'OurMorph' in compute_morph:
-            with PrintTime("OurMorph"):
+        if 'MyMorph' in compute_morph:
+            with PrintTime("MyMorph"):
                 features_temp = get_features_mymorph(self.beat, leads_flag, ws[0], ws[1])
                 features = np.column_stack((features, features_temp)) if features.size else features_temp
                 print(features.shape)

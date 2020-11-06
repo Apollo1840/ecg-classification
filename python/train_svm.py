@@ -8,31 +8,39 @@ from sklearn.model_selection import train_test_split
 from sklearn import svm
 from pprint import pprint
 
-from util_path_manager import path_to_model, path_to_measure
-from data_load import load_mit_db
+# internal depencency:
+from data_load import load_features_from_mitdb
 from model_aggregation import *
+
 from utils import PrintTime, calc_class_weights
+from util_path_manager import path_to_model, path_to_measure
 
 
 def train_and_evaluation(
-        multi_mode='ovo',
+
+        # date_parameters
         winL=90,
         winR=90,
-        do_preprocess=True,
-        use_weight_class=False,
-        maxRR=True,
-        use_RR=True,
-        norm_RR=True,
+        do_preprocess=False,
+        reduced_DS=False,  # include lead 2 or not.
+        maxRR=False,
+        use_RR=False,
+        norm_RR=False,
         compute_morph={''},
+        is_normalize=False,
+        cross_patient=False,
+
+        # model_parameters
+        multi_mode='ovr',
+        c_value=0.001,
+        gamma_value=0.0,  # 0.0 == "auto", in train_model() defined
+
+        # training_parameters
         oversamp_method='',
         pca_k=0,
         feature_selection=False,
-        cross_patient=False,
-        c_value=0.001,
-        gamma_value=0.0,
-        reduced_DS=False,
-        leads_flag=[1, 0],
-        verbose=True,
+
+        verbose=False,
 ):
     """
     train the model on training records.
@@ -43,7 +51,6 @@ def train_and_evaluation(
     :param winL:
     :param winR:
     :param do_preprocess:
-    :param use_weight_class:
     :param maxRR:
     :param use_RR:
     :param norm_RR:
@@ -55,7 +62,6 @@ def train_and_evaluation(
     :param c_value:
     :param gamma_value:
     :param reduced_DS: Bool,
-    :param leads_flag: List[int], [MLII, V1] set the value to 0 or 1 to reference if that lead is used
     :return:
     """
 
@@ -63,7 +69,14 @@ def train_and_evaluation(
         print("Running train and evaluation !")
 
     params_for_naming = locals()
+    path_to_svm_model = path_to_model(leads_flag=(1, int(reduced_DS)),
+                                      use_weight_class=True,
+                                      **params_for_naming)
+    path_to_perf_measures = path_to_measure(leads_flag=(1, int(reduced_DS)),
+                                            use_weight_class=True,
+                                            **params_for_naming)
 
+    ###
     # 1. Load data
     if verbose:
         print("loading the data ...")
@@ -75,33 +88,39 @@ def train_and_evaluation(
                                                                       use_RR,
                                                                       norm_RR,
                                                                       compute_morph,
+                                                                      is_normalize=is_normalize,
                                                                       cross_patient=cross_patient,
                                                                       verbose=verbose)
 
+    check_data_shape(tr_features, tr_labels, eval_features, eval_labels)
+
+    ###
     # 2. train the model
-    if verbose:
+    if verbose and cross_patient:
         print("Ready to train the model on MIT-BIH DS1: ...")
 
     model_kwargs = {
+        "multi_mode": multi_mode,
         "c_value": c_value,
         "gamma_value": gamma_value,
-        "multi_mode": multi_mode,
     }
-    model_svm_path = path_to_model(**params_for_naming)
-    svm_model = train_model_module(model_svm_path, tr_features, tr_labels, **model_kwargs, verbose=verbose)
+    svm_model = train_model_module(path_to_svm_model, tr_features, tr_labels, **model_kwargs, verbose=verbose)
 
+    ###
     # 3. evaluate the model
     if verbose:
-        print("Testing model on MIT-BIH DS2: " + model_svm_path + "...")
+        print("Testing model on MIT-BIH DS2: " + path_to_svm_model + "...")
 
-    perf_measures_path = path_to_measure(**params_for_naming)
-    eval_model_module(perf_measures_path,
+    eval_model_module(path_to_perf_measures,
                       svm_model,
                       tr_features,
                       tr_labels,
                       eval_features,
                       eval_labels,
                       **model_kwargs,
+                      is_include_train=False,
+                      is_include_ovo_voting_exp=False,
+                      is_save_prediction=False,
                       verbose=verbose)
 
     print("congrats! evaluation complete! ")
@@ -112,71 +131,64 @@ def train_and_evaluation(
 def load_ml_data(ws,
                  data_do_preprocess,
                  data_is_reduced,
-                 ml_is_maxRR,
-                 ml_use_RR,
-                 ml_norm_RR,
+                 ml_is_max_rr,
+                 ml_use_rr,
+                 ml_norm_rr,
                  ml_compute_morph,
                  is_normalize=True,
                  cross_patient=True,
                  verbose=False):
-
-    if cross_patient:
+    if cross_patient:  # inter-patient
         # Load train data
         # tr_ means train_
-        tr_features, tr_labels, _ = load_mit_db('DS1',
-                                                ws,
-                                                data_do_preprocess,
-                                                data_is_reduced,
-                                                ml_is_maxRR,
-                                                ml_use_RR,
-                                                ml_norm_RR,
-                                                ml_compute_morph)
+        tr_features, tr_labels, _ = load_features_from_mitdb('DS1',
+                                                             ws,
+                                                             data_do_preprocess,
+                                                             data_is_reduced,
+                                                             ml_is_max_rr,
+                                                             ml_use_rr,
+                                                             ml_norm_rr,
+                                                             ml_compute_morph,
+                                                             verbose=verbose)
 
         # Load Test data
         # eval_ means evaluation
-        eval_features, eval_labels, _ = load_mit_db('DS2',
-                                                    ws,
-                                                    data_do_preprocess,
-                                                    data_is_reduced,
-                                                    ml_is_maxRR,
-                                                    ml_use_RR,
-                                                    ml_norm_RR,
-                                                    ml_compute_morph)
-        if is_normalize and verbose:
-            print("normalizing the data ... ")
-
-            scaler = StandardScaler()
-            scaler.fit(tr_features)
-            tr_features_scaled = scaler.transform(tr_features)
-            eval_features_scaled = scaler.transform(eval_features)
-        else:
-            tr_features_scaled = tr_features
-            eval_features_scaled = eval_features
-
-    else:
-        features, labels, _ = load_mit_db('DS12',
-                                          ws,
-                                          data_do_preprocess,
-                                          data_is_reduced,
-                                          ml_is_maxRR,
-                                          ml_use_RR,
-                                          ml_norm_RR,
-                                          ml_compute_morph)
+        eval_features, eval_labels, _ = load_features_from_mitdb('DS2',
+                                                                 ws,
+                                                                 data_do_preprocess,
+                                                                 data_is_reduced,
+                                                                 ml_is_max_rr,
+                                                                 ml_use_rr,
+                                                                 ml_norm_rr,
+                                                                 ml_compute_morph,
+                                                                 verbose=verbose)
+    else:  # intra-patient
+        features, labels, _ = load_features_from_mitdb('DS12',
+                                                       ws,
+                                                       data_do_preprocess,
+                                                       data_is_reduced,
+                                                       ml_is_max_rr,
+                                                       ml_use_rr,
+                                                       ml_norm_rr,
+                                                       ml_compute_morph,
+                                                       verbose=verbose)
 
         tr_features, eval_features, tr_labels, eval_labels = train_test_split(features, labels,
                                                                               test_size=0.2,
                                                                               random_state=2020)
 
-        if is_normalize and verbose:
-            print("normalizing the data ... ")
+    if is_normalize:
 
-            scaler = StandardScaler()
-            scaler.fit(tr_features)
-            tr_features_scaled = scaler.transform(tr_features)
-            eval_features_scaled = scaler.transform(eval_features)
-        else:
-            tr_features_scaled = tr_features
-            eval_features_scaled = eval_features
+        if verbose:
+            print("preprocess: \t normalizing the data ... ")
+
+        scaler = StandardScaler()
+        scaler.fit(tr_features)
+        tr_features_scaled = scaler.transform(tr_features)
+        eval_features_scaled = scaler.transform(eval_features)
+    else:
+        tr_features_scaled = tr_features
+        eval_features_scaled = eval_features
 
     # todo: store the scaler
     # input shape is the same
@@ -206,18 +218,18 @@ def train_model_module(model_svm_path, tr_features, tr_labels, verbose=False, **
 
 
 def train_model(model_svm_path, tr_features, tr_labels, verbose=False, **model_kwargs):
-    C_value = model_kwargs.get("c_value", 1)
+    c_value = model_kwargs.get("c_value", 1)
     gamma_value = model_kwargs.get("gamma_value", 0)
     multi_mode = model_kwargs.get("multi_model", "ovo")
     use_probability = False
     class_weights = calc_class_weights(tr_labels)
-    # class_weight='balanced',
+    # class_weights = "balanced",
     gamma_value = gamma_value if gamma_value != 0.0 else "auto"
 
     # TODO load best params from cross validation!
 
     # NOTE 0.0 means 1/n_features default value
-    svm_model = svm.SVC(C=C_value, kernel='rbf', degree=3, gamma=gamma_value,
+    svm_model = svm.SVC(C=c_value, kernel='rbf', degree=3, gamma=gamma_value,
                         coef0=0.0, shrinking=True, probability=use_probability, tol=0.001,
                         cache_size=200, class_weight=class_weights, verbose=verbose,
                         max_iter=-1, decision_function_shape=multi_mode, random_state=None)
@@ -247,12 +259,12 @@ def eval_model_module(perf_measures_path,
                       gamma_value,
                       is_include_train=False,
                       is_include_ovo_voting_exp=False,
+                      is_save_prediction=False,
                       verbose=False,
-                      **kwargs
                       ):
     # ovo_voting:
     # Let's test new data!
-    print("Evaluation on DS2 ...")
+    print("Evaluation on name_ds2 ...")
     eval_model(svm_model,
                eval_features,
                eval_labels,
@@ -261,12 +273,14 @@ def eval_model_module(perf_measures_path,
                perf_measures_path,
                c_value,
                gamma_value,
+               is_save_prediction=is_save_prediction,
+               name_ds='',
                verbose=verbose,
-               DS='')
+               )
 
     # Simply add 1 to the win class
     if is_include_train:
-        print("Evaluation on DS1 ...")
+        print("Evaluation on name_ds1 ...")
         eval_model(svm_model,
                    tr_features,
                    tr_labels,
@@ -276,13 +290,13 @@ def eval_model_module(perf_measures_path,
                    c_value,
                    gamma_value,
                    verbose=verbose,
-                   DS='Train_')
+                   name_ds='Train_')
 
     # ovo_voting_exp:
     # Consider the post prob adding to both classes
     if is_include_ovo_voting_exp:
         # Let's test new data!
-        print("Evaluation on DS2 ...")
+        print("Evaluation on name_ds2 ...")
         eval_model(svm_model,
                    eval_features,
                    eval_labels,
@@ -292,10 +306,10 @@ def eval_model_module(perf_measures_path,
                    c_value,
                    gamma_value,
                    verbose=verbose,
-                   DS='')
+                   name_ds='')
 
         if is_include_train:
-            print("Evaluation on DS1 ...")
+            print("Evaluation on name_ds1 ...")
             eval_model(svm_model,
                        tr_features,
                        tr_labels,
@@ -305,12 +319,21 @@ def eval_model_module(perf_measures_path,
                        c_value,
                        gamma_value,
                        verbose=verbose,
-                       DS='Train_')
+                       name_ds='Train_')
 
 
 # Eval the SVM model and export the results
-def eval_model(svm_model, features, labels, multi_mode, voting_strategy,
-               output_path, C_value, gamma_value, DS, verbose=False):
+def eval_model(svm_model,
+               features,
+               labels,
+               multi_mode,
+               voting_strategy,
+               output_path,
+               c_value,
+               gamma_value,
+               name_ds,
+               is_save_prediction=False,
+               verbose=False):
     """
 
     :param svm_model:
@@ -319,65 +342,120 @@ def eval_model(svm_model, features, labels, multi_mode, voting_strategy,
     :param multi_mode: str, 'ovo' or 'ovr'
     :param voting_strategy: str, has effect when multi_model is ovo
     :param output_path:
-    :param C_value:
+    :param c_value:
     :param gamma_value:
-    :param DS: Str, "" or "Train_", basically used as a marker in path name.
+    :param name_ds: Str, "" or "Train_", basically used as a marker in path name.
+    :param is_save_prediction:
+    :param verbose
     :return:
     """
-
-    decision = svm_model.decision_function(features)
 
     if verbose:
         print("make evaluation predict...")
 
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+
+    if verbose:
+        print("model predicting with mode: {} ...".format(multi_mode))
+
+    # 1) get prediction based on multi_mode
     if multi_mode == 'ovr':
         predict = svm_model.predict(features)
 
     else:  # elif multi_mode == 'ovo':
+        decision = svm_model.decision_function(features)
+        # decision is the probablities predictions of each model pair,
+        # decision dim: id_item, prob_positive_of_model_pair_i
+        # you could use ovo_class_combinations() to find out pos_label and neg_label of each pair
         predict, _ = ovo_voting_handler(decision, 4, voting_strategy)
 
-    # record the performance
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
+        is_save_decision = is_save_prediction
+        if is_save_decision:
+            path_to_decision = os.path.join(output_path, name_decision(name_ds, c_value, gamma_value))
+            np.savetxt(path_to_decision, decision)
 
+    if is_save_prediction:
+        path_to_predict = os.path.join(output_path, name_prediction(name_ds, c_value, gamma_value, voting_strategy))
+        np.savetxt(path_to_predict, predict.astype(int), '%.0f')
+
+    if verbose:
+        print("calculating the performance ... ")
+
+    # 2) calculate and record the performance
     # svm_model.predict_log_proba  svm_model.predict_proba   svm_model.predict ...
+    # predict, labels : List[int]
     perf_measures = compute_AAMI_performance_measures(predict, labels, verbose=verbose)
     pprint(perf_measures.__dict__, indent=2)
 
-    # save results
-    gamma_str = 'g_' + str(gamma_value) if gamma_value != 0.0 else ""
+    path_to_perf_results = os.path.join(output_path, name_perf_results_file(name_ds, c_value, gamma_value,
+                                                                            perf_measures.Ijk, voting_strategy))
+    write_AAMI_results(perf_measures, path_to_perf_results)
 
-    # 1) save AAMI results
-    path_to_AAMI_results = os.path.join(output_path,
-                                        "{}C_{}{}_score_Ijk_{}_{}.txt".format(DS,
-                                                                              C_value,
-                                                                              gamma_str,
-                                                                              format(perf_measures.Ijk, '.2f'),
-                                                                              voting_strategy))
-    write_AAMI_results(perf_measures, path_to_AAMI_results)
+    if verbose:
+        print("Results writed at " + output_path + '/' + name_ds + 'C_' + str(c_value))
 
-    # 2) save decsion
-    path_to_decision = os.path.join(output_path, "{}C_{}{}_decision_ovo.csv".format(DS, C_value, gamma_str))
-    np.savetxt(path_to_decision, decision)
 
-    # 3) save predict
-    path_to_predict = os.path.join(output_path, "{}C_{}_predict_{}.csv").format(DS, C_value, gamma_value,
-                                                                                voting_strategy)
-    np.savetxt(path_to_predict, predict.astype(int), '%.0f')
+def name_gamma_str(gamma_value):
+    if isinstance(gamma_value, float):
+        gamma_str = 'g_' + str(gamma_value) if gamma_value != 0.0 else ""
+    else:
+        gamma_str = str(gamma_value)
+    return gamma_str
 
-    print("Results writed at " + output_path + '/' + DS + 'C_' + str(C_value))
+
+def name_perf_results_file(name_ds, c_value, gamma_value, ijk, voting_strategy):
+    return "{}C_{}{}_score_Ijk_{}_{}.txt".format(name_ds,
+                                                 c_value,
+                                                 name_gamma_str(gamma_value),
+                                                 format(ijk, '.2f'),
+                                                 voting_strategy)
+
+
+def name_decision(name_ds, c_value, gamma_value):
+    return "{}C_{}{}_decision_ovo.csv".format(name_ds, c_value,
+                                              name_gamma_str(gamma_value))
+
+
+def name_prediction(name_ds, c_value, gamma_value, voting_strategy):
+    return "{}C_{}_predict_{}.csv".format(name_ds, c_value, name_gamma_str(gamma_value), voting_strategy)
+
+
+def check_data_shape(x_train, y_train, x_test, y_test):
+    print("x_train.shape: ", x_train.shape)
+    print("x_test.shape: ", x_test.shape)
+    assert x_train.shape[1] == x_test.shape[1]
+
+    print("y_train length: ", len(y_train))
+    assert x_train.shape[0] == len(y_train)
+    assert x_test.shape[0] == len(y_test)
+
+    print("y_train labels:", np.unique(y_train))
+    print("y_train[:10]: ", y_train[:10])
+
+    print("y_test length: ", len(y_test))
+    print("y_test[:10]: ", y_test[:10])
 
 
 if __name__ == "__main__":
-    train_and_evaluation(
-        multi_mode="ovo",
-        winL=90,
-        winR=90,
-        do_preprocess=True,
-        maxRR=True,
-        use_RR=False,
-        norm_RR=True,
-        compute_morph={'resample_10', 'lbp', 'hbf5', 'wvlt', 'HOS'},
-        reduced_DS=True,
-        leads_flag=[1, 0],
-    )
+    for c_value in [0.1, 1, 5, 10, 20, 50]:
+        train_and_evaluation(
+
+            # data_parameters
+            winL=90,
+            winR=90,
+            do_preprocess=True,
+            reduced_DS=False,
+            maxRR=True,
+            use_RR=True,
+            norm_RR=True,
+            compute_morph={'u-lbp', 'wvlt', 'HOS', 'MyMorph'},
+            is_normalize=True,
+            cross_patient=True,
+
+            # model_parameters
+            multi_mode="ovo",
+            c_value=0.01,
+
+            verbose=True
+        )
