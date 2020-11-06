@@ -54,8 +54,8 @@ def load_pkl_from_storage(path_func, verbose=True):
             data_path = path_func(*args, **kwargs)
 
             if os.path.isfile(data_path):
-
                 if verbose:
+                    print("{} exists".format(data_path))
                     print("load {} data from {}".format(make_func.__name__, data_path))
 
                 with open(data_path, "rb") as f:

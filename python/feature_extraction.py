@@ -71,9 +71,9 @@ def compute_RR_intervals(R_poses):
         pre_R = np.append(pre_R, R_poses[i] - R_poses[i - 1])
         post_R = np.append(post_R, R_poses[i + 1] - R_poses[i])
 
+    # bad bug fixing
     pre_R[0] = pre_R[1]
     pre_R = np.append(pre_R, R_poses[-1] - R_poses[-2])
-
     post_R = np.append(post_R, post_R[-1])
 
     # Local_RR: AVG from last 10 pre_R values

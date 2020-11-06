@@ -21,13 +21,14 @@ def display_beat(beat_index, ref_sig, r_pos_original=False):
     plt.show()
 
 
-def parse_annotations(annotations, ref_sig, ws=(90, 90), size_rr_max=20):
+def parse_annotations(annotations, ref_sig, ws=(90, 90), size_rr_max=20, verbose=False):
     """
 
     :param annotations: List[Tuple], each tuple is (int, str) stands for r_pos, beat_label
     :param ref_sig: reference_signal
     :param ws: Tuple[int], window size (winL, winR)
     :param size_rr_max: int
+    :param verbose
     :return:
         beat_indices, List[Tuple], Tuple is (beat_start_index, r_peak_index, beat_end_index).
         labels, List[int],
@@ -41,7 +42,7 @@ def parse_annotations(annotations, ref_sig, ws=(90, 90), size_rr_max=20):
 
     for r_pos, beat_label in annotations:
         r_peaks_original.append(r_pos)
-        beat_index, label = parse_beat(r_pos, beat_label, ref_sig, ws, rr_max=size_rr_max)
+        beat_index, label = parse_beat(r_pos, beat_label, ref_sig, ws, rr_max=size_rr_max, verbose=verbose)
         _, r_pos, _ = beat_index
         r_peaks.append(r_pos)
 
@@ -59,7 +60,7 @@ def parse_annotations(annotations, ref_sig, ws=(90, 90), size_rr_max=20):
     return beat_indices, labels, r_peaks_original, r_peaks, is_r_valid
 
 
-def parse_beat(r_pos, beat_type, ref_sig, ref_ws, is_relocate=True, rr_max=20):
+def parse_beat(r_pos, beat_type, ref_sig, ref_ws, is_relocate=True, rr_max=20, verbose=False):
     """
     relocate r_peak, get beat index and AAMI class
 
@@ -69,6 +70,7 @@ def parse_beat(r_pos, beat_type, ref_sig, ref_ws, is_relocate=True, rr_max=20):
     :param ref_ws: Tuple[int], (winL, winR), reference window size
     :param is_relocate: Bool
     :param rr_max: int, related to sample rate
+    :param verbose
     :return: Tuple, str, str is AAMI label.
     """
 
@@ -85,6 +87,9 @@ def parse_beat(r_pos, beat_type, ref_sig, ref_ws, is_relocate=True, rr_max=20):
         class_AAMI = mitbih2aami(beat_type)
         return (beatL, r_pos, beatR), class_AAMI
     else:
+        if verbose:
+            print("beat at {} with type {} is not accepted".format(r_pos, beat_type))
+
         return (None, r_pos, None), None
 
 

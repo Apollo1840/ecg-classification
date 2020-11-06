@@ -17,6 +17,7 @@ import gc
 import numpy as np
 
 import operator
+import matplotlib.pyplot as plt
 
 from data_base import mit_db
 from config import *
@@ -48,12 +49,16 @@ def load_mit_db(
     :param use_RR: Bool
     :param norm_RR: Bool
     :param compute_morph: List[str] or Set[str],
-        can be ['resample_10', 'raw', 'u-lbp', 'lbp', 'hbf5', 'wvlt', 'wvlt+pca', 'HOS', 'myMorph']
+        can be ['resample_10', 'raw', 'u-lbp', 'lbp', 'hbf5', 'wvlt', 'wvlt+pca', 'HOS', 'OurMorph']
     :param is_save: save loaded as pickle or not
     :return: features, labels, patient_num_beats
     """
 
     my_db = mitbih_db(DS, is_reduce, ws=ws, do_preprocess=do_preprocess)
+
+    print("amplitude range of first beat: {} to {}".format(np.min(my_db.beat[0][0]), np.max(my_db.beat[0][0])))
+    plt.plot(my_db.beat[0][0][0])
+    plt.show()
 
     # DS for wvlt+pca
     # (winL, winR) for mymorph
@@ -138,7 +143,7 @@ def load_signals(record_ids, ws, do_preprocess=True, verbose=False):
     return my_db
 
 
-def load_signal_single(f_record, f_annotation, ws, do_preprocess, verbose=False):
+def load_signal_single(f_record, f_annotation, ws=(90, 90), do_preprocess=False, verbose=False):
     """
 
     :param f_record: str
@@ -170,10 +175,15 @@ def load_signal_single(f_record, f_annotation, ws, do_preprocess, verbose=False)
         annotations,
         MLII,
         ws,
-        size_rr_max=20)
+        size_rr_max=20,
+        verbose=verbose)
 
     beats = [(MLII[beat_start: beat_end], V1[beat_start: beat_end]) for beat_start, _, beat_end in beat_indices]
     labels = [AAMI_CLASSES.index(label) for label in labels]
+
+    if verbose:
+        print("number of annotations: {}".format(len(r_peaks)))
+        print("number of beats: {}".format(len(beats)))
 
     return raw_signal, beats, labels, np.array(is_r_valid), np.array(r_peaks), np.array(r_peaks_original)
 
