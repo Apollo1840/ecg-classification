@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn import svm
 from pprint import pprint
+from tqdm import tqdm
 
 # internal depencency:
 from data_load import load_features_from_mitdb
@@ -438,7 +439,7 @@ def check_data_shape(x_train, y_train, x_test, y_test):
 
 
 if __name__ == "__main__":
-    for c_value in [0.1, 1, 5, 10, 20, 50]:
+    for c_value in tqdm([0.1, 1, 5, 10, 20, 50]):
         train_and_evaluation(
 
             # data_parameters

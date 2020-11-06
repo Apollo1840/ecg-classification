@@ -62,9 +62,9 @@ def load_features_from_mitdb(
 
     if verbose:
         introduce_mtibih_db(my_db)
-    	print("amplitude range of first beat: {} to {}".format(np.min(my_db.beat[0][0]), np.max(my_db.beat[0][0])))
-    	plt.plot(my_db.beat[0][0][0])
-    	plt.show()
+        print("amplitude range of first beat: {} to {}".format(np.min(my_db.beat[0][0]), np.max(my_db.beat[0][0])))
+        plt.plot(my_db.beat[0][0][0])
+        plt.show()
 
     leads_flag = [1, int(is_reduce)]  # [MLII, V1] set the value to 0 or 1 to reference if that lead is used
 
@@ -135,6 +135,7 @@ def mitbih_db(DS, is_reduce, ws, do_preprocess=False, verbose=False):
     my_db.orig_R_pos = list_r_peaks_original
 
     return my_db
+
 
 def introduce_mtibih_db(my_db):
     for i, fRecord in enumerate(my_db.filename):
