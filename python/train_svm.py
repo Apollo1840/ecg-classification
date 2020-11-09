@@ -439,7 +439,7 @@ def check_data_shape(x_train, y_train, x_test, y_test):
 
 
 if __name__ == "__main__":
-    for c_value in tqdm([0.1, 1, 5, 10, 20, 50]):
+    for c_value in tqdm([0.01, 0.1, 1, 5, 10, 20, 50, 500]):
         train_and_evaluation(
 
             # data_parameters
